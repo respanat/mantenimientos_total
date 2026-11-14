@@ -1,0 +1,304 @@
+<?php
+
+/**
+ * -------------------------------------------------------------------------
+ * Mantenimientos - Plugin GLPI
+ * Instalación y desinstalación: tablas, configuración por defecto y permisos.
+ * -------------------------------------------------------------------------
+ * @license   GPL-3.0-or-later
+ * @link      https://github.com/respanat/mantenimientos_total
+ * -------------------------------------------------------------------------
+ */
+
+/**
+ * Permisos del plugin y valor que recibe el perfil Super-Admin al instalar.
+ */
+function plugin_mantenimientos_rights(): array
+{
+    return [
+        'plugin_mantenimientos_plan'        => ALLSTANDARDRIGHT, // Planes y checklists
+        'plugin_mantenimientos_maintenance' => ALLSTANDARDRIGHT, // Mantenimientos, checklist ejecutado, costos
+        'plugin_mantenimientos_metrics'     => READ,             // Seguimiento y control
+        'plugin_mantenimientos_config'      => READ | UPDATE,    // Configuración del plugin
+    ];
+}
+
+/**
+ * Esquema de tablas propias del plugin.
+ * Convenciones GLPI 11: InnoDB, utf8mb4, claves unsigned, fechas TIMESTAMP.
+ */
+function plugin_mantenimientos_schema(string $sign): array
+{
+    $fk = "int {$sign} NOT NULL DEFAULT '0'";
+
+    return [
+        // Planes por tipo de equipo
+        'glpi_plugin_mantenimientos_plans' => "
+            `id` int {$sign} NOT NULL AUTO_INCREMENT,
+            `entities_id` {$fk},
+            `is_recursive` tinyint NOT NULL DEFAULT '0',
+            `name` varchar(255) DEFAULT NULL,
+            `itemtype` varchar(100) NOT NULL DEFAULT '' COMMENT 'Computer, Printer, Phone...',
+            `types_id` {$fk} COMMENT 'Tipo dentro del itemtype (ej. ComputerType: portátil). 0 = todos',
+            `frequency_days` int NOT NULL DEFAULT '180',
+            `tolerance_days` int NOT NULL DEFAULT '15',
+            `service_mode` tinyint NOT NULL DEFAULT '1' COMMENT '1 interno, 2 externo',
+            `suppliers_id` {$fk} COMMENT 'Proveedor por defecto si es externo',
+            `is_active` tinyint NOT NULL DEFAULT '1',
+            `comment` text,
+            `date_creation` timestamp NULL DEFAULT NULL,
+            `date_mod` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            KEY `entities_id` (`entities_id`),
+            KEY `itemtype_types` (`itemtype`, `types_id`),
+            KEY `suppliers_id` (`suppliers_id`),
+            KEY `is_active` (`is_active`)
+        ",
+
+        // Plantilla de checklist del plan
+        'glpi_plugin_mantenimientos_plantasks' => "
+            `id` int {$sign} NOT NULL AUTO_INCREMENT,
+            `plugin_mantenimientos_plans_id` {$fk},
+            `name` varchar(255) DEFAULT NULL,
+            `description` text,
+            `rank` int NOT NULL DEFAULT '0',
+            `is_mandatory` tinyint NOT NULL DEFAULT '1',
+            `is_active` tinyint NOT NULL DEFAULT '1',
+            `date_creation` timestamp NULL DEFAULT NULL,
+            `date_mod` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            KEY `plugin_mantenimientos_plans_id` (`plugin_mantenimientos_plans_id`),
+            KEY `rank` (`rank`)
+        ",
+
+        // Relación equipo ↔ plan y estado calculado del preventivo
+        'glpi_plugin_mantenimientos_items' => "
+            `id` int {$sign} NOT NULL AUTO_INCREMENT,
+            `itemtype` varchar(100) NOT NULL DEFAULT '',
+            `items_id` {$fk},
+            `plugin_mantenimientos_plans_id` {$fk},
+            `frequency_days_override` int NOT NULL DEFAULT '0' COMMENT '0 = usa la del plan',
+            `last_preventive_date` date DEFAULT NULL,
+            `next_due_date` date DEFAULT NULL,
+            `is_excluded` tinyint NOT NULL DEFAULT '0',
+            `exclusion_reason` text,
+            `date_creation` timestamp NULL DEFAULT NULL,
+            `date_mod` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `item` (`itemtype`, `items_id`),
+            KEY `plugin_mantenimientos_plans_id` (`plugin_mantenimientos_plans_id`),
+            KEY `next_due_date` (`next_due_date`)
+        ",
+
+        // Registro principal: preventivos y correctivos
+        'glpi_plugin_mantenimientos_maintenances' => "
+            `id` int {$sign} NOT NULL AUTO_INCREMENT,
+            `entities_id` {$fk},
+            `itemtype` varchar(100) NOT NULL DEFAULT '',
+            `items_id` {$fk},
+            `maintenance_type` tinyint NOT NULL DEFAULT '1' COMMENT '1 preventivo, 2 correctivo',
+            `status` int NOT NULL DEFAULT '1',
+            `plugin_mantenimientos_plans_id` {$fk},
+            `plugin_mantenimientos_maintenances_id_parent` {$fk} COMMENT 'Preventivo que originó el correctivo',
+            `tickets_id` {$fk} COMMENT 'Enlace opcional a un ticket, solo trazabilidad',
+            `scheduled_date` date DEFAULT NULL,
+            `date_start` timestamp NULL DEFAULT NULL,
+            `date_end` timestamp NULL DEFAULT NULL,
+            `users_id_tech` {$fk},
+            `users_id_assigned` {$fk} COMMENT 'Usuario asignado al equipo en ese momento',
+            `reschedule_count` int NOT NULL DEFAULT '0',
+            `cancel_reason` text,
+            `observations` text,
+            `diagnosis` text,
+            `solution` text,
+            `result` tinyint NOT NULL DEFAULT '0' COMMENT '0 n/a, 1 reparado, 2 no reparable',
+            `is_external` tinyint NOT NULL DEFAULT '0',
+            `suppliers_id` {$fk},
+            `supplier_reference` varchar(255) DEFAULT NULL COMMENT 'Orden o radicado del proveedor',
+            `date_sent` timestamp NULL DEFAULT NULL,
+            `date_returned` timestamp NULL DEFAULT NULL,
+            `users_id_creator` {$fk},
+            `date_creation` timestamp NULL DEFAULT NULL,
+            `date_mod` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            KEY `entities_id` (`entities_id`),
+            KEY `item` (`itemtype`, `items_id`),
+            KEY `type_status` (`maintenance_type`, `status`),
+            KEY `plugin_mantenimientos_plans_id` (`plugin_mantenimientos_plans_id`),
+            KEY `plugin_mantenimientos_maintenances_id_parent` (`plugin_mantenimientos_maintenances_id_parent`),
+            KEY `tickets_id` (`tickets_id`),
+            KEY `scheduled_date` (`scheduled_date`),
+            KEY `users_id_tech` (`users_id_tech`),
+            KEY `users_id_assigned` (`users_id_assigned`),
+            KEY `suppliers_id` (`suppliers_id`)
+        ",
+
+        // Checklist ejecutado (copia de la tarea para conservar historial)
+        'glpi_plugin_mantenimientos_checks' => "
+            `id` int {$sign} NOT NULL AUTO_INCREMENT,
+            `plugin_mantenimientos_maintenances_id` {$fk},
+            `plugin_mantenimientos_plantasks_id` {$fk},
+            `name` varchar(255) DEFAULT NULL,
+            `is_mandatory` tinyint NOT NULL DEFAULT '1',
+            `result` tinyint NOT NULL DEFAULT '0' COMMENT '0 pendiente, 1 hecho, 2 no hecho, 3 no aplica',
+            `comment` text,
+            `users_id` {$fk},
+            `date_mod` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            KEY `plugin_mantenimientos_maintenances_id` (`plugin_mantenimientos_maintenances_id`),
+            KEY `plugin_mantenimientos_plantasks_id` (`plugin_mantenimientos_plantasks_id`)
+        ",
+
+        // Costos por mantenimiento
+        'glpi_plugin_mantenimientos_costs' => "
+            `id` int {$sign} NOT NULL AUTO_INCREMENT,
+            `plugin_mantenimientos_maintenances_id` {$fk},
+            `cost_type` tinyint NOT NULL DEFAULT '1' COMMENT '1 repuesto, 2 mano de obra, 3 servicio externo, 4 envío',
+            `description` varchar(255) DEFAULT NULL,
+            `quantity` decimal(20,4) NOT NULL DEFAULT '1.0000',
+            `unit_cost` decimal(20,4) NOT NULL DEFAULT '0.0000',
+            `total` decimal(20,4) NOT NULL DEFAULT '0.0000',
+            `suppliers_id` {$fk},
+            `cost_date` date DEFAULT NULL,
+            `users_id` {$fk},
+            `date_creation` timestamp NULL DEFAULT NULL,
+            `date_mod` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            KEY `plugin_mantenimientos_maintenances_id` (`plugin_mantenimientos_maintenances_id`),
+            KEY `cost_type` (`cost_type`),
+            KEY `suppliers_id` (`suppliers_id`),
+            KEY `cost_date` (`cost_date`)
+        ",
+
+        // Bitácora de cambios de estado (base de las métricas de tiempos)
+        'glpi_plugin_mantenimientos_statuslogs' => "
+            `id` int {$sign} NOT NULL AUTO_INCREMENT,
+            `plugin_mantenimientos_maintenances_id` {$fk},
+            `old_status` int NOT NULL DEFAULT '0',
+            `new_status` int NOT NULL DEFAULT '0',
+            `comment` text,
+            `users_id` {$fk},
+            `date` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            KEY `plugin_mantenimientos_maintenances_id` (`plugin_mantenimientos_maintenances_id`),
+            KEY `date` (`date`)
+        ",
+
+        // Configuración clave/valor
+        'glpi_plugin_mantenimientos_configs' => "
+            `id` int {$sign} NOT NULL AUTO_INCREMENT,
+            `name` varchar(100) NOT NULL DEFAULT '',
+            `value` text,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `name` (`name`)
+        ",
+    ];
+}
+
+/**
+ * Valores por defecto de configuración.
+ */
+function plugin_mantenimientos_default_config(): array
+{
+    return [
+        'threshold_warning_days'  => '30', // 🟡 faltan 30 días o menos
+        'threshold_critical_days' => '7',  // 🟠 faltan 7 días o menos
+        'goal_compliance_pct'     => '90', // Meta de cumplimiento preventivo
+        'goal_corrective_pct'     => '20', // Máximo de correctivos frente a preventivos
+        'replacement_cost_pct'    => '50', // Costo acumulado vs valor de compra
+        'recurrence_count'        => '2',  // Correctivos para marcar reincidente...
+        'recurrence_months'       => '12', // ...dentro de estos meses
+    ];
+}
+
+function plugin_mantenimientos_install(): bool
+{
+    /** @var \DBmysql $DB */
+    global $DB;
+
+    $migration = new Migration(PLUGIN_MANTENIMIENTOS_VERSION);
+    $charset   = DBConnection::getDefaultCharset();
+    $collation = DBConnection::getDefaultCollation();
+    $sign      = DBConnection::getDefaultPrimaryKeySignOption();
+
+    // 1. Tablas
+    foreach (plugin_mantenimientos_schema($sign) as $table => $columns) {
+        if (!$DB->tableExists($table)) {
+            $DB->doQuery(
+                "CREATE TABLE `{$table}` ({$columns})
+                 ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation} ROW_FORMAT=DYNAMIC"
+            );
+        }
+    }
+
+    // 2. Configuración por defecto (sin sobrescribir valores existentes)
+    foreach (plugin_mantenimientos_default_config() as $name => $value) {
+        $exists = countElementsInTable('glpi_plugin_mantenimientos_configs', ['name' => $name]);
+        if ($exists === 0) {
+            $DB->insert('glpi_plugin_mantenimientos_configs', [
+                'name'  => $name,
+                'value' => $value,
+            ]);
+        }
+    }
+
+    // 3. Permisos: se crean en todos los perfiles en 0...
+    $rights = plugin_mantenimientos_rights();
+    foreach (array_keys($rights) as $rightname) {
+        if (countElementsInTable('glpi_profilerights', ['name' => $rightname]) === 0) {
+            ProfileRight::addProfileRights([$rightname]);
+        }
+    }
+
+    // ...y se conceden completos a los perfiles que administran la configuración (Super-Admin)
+    $admin_profiles = $DB->request([
+        'SELECT' => ['profiles_id'],
+        'FROM'   => 'glpi_profilerights',
+        'WHERE'  => [
+            'name'   => 'config',
+            'rights' => ['&', UPDATE],
+        ],
+    ]);
+    foreach ($admin_profiles as $row) {
+        ProfileRight::updateProfileRights((int) $row['profiles_id'], $rights);
+    }
+
+    // Refrescar la sesión actual para que el menú aparezca sin cerrar sesión
+    if (isset($_SESSION['glpiactiveprofile']['id'])) {
+        $current = (int) $_SESSION['glpiactiveprofile']['id'];
+        foreach ($admin_profiles as $row) {
+            if ((int) $row['profiles_id'] === $current) {
+                foreach ($rights as $rightname => $value) {
+                    $_SESSION['glpiactiveprofile'][$rightname] = $value;
+                }
+            }
+        }
+    }
+
+    $migration->executeMigration();
+    return true;
+}
+
+function plugin_mantenimientos_uninstall(): bool
+{
+    /** @var \DBmysql $DB */
+    global $DB;
+
+    foreach (array_keys(plugin_mantenimientos_schema('unsigned')) as $table) {
+        if ($DB->tableExists($table)) {
+            $DB->doQuery("DROP TABLE `{$table}`");
+        }
+    }
+
+    $rightnames = array_keys(plugin_mantenimientos_rights());
+    ProfileRight::deleteProfileRights($rightnames);
+    foreach ($rightnames as $rightname) {
+        unset($_SESSION['glpiactiveprofile'][$rightname]);
+    }
+
+    $DB->delete('glpi_displaypreferences', [
+        'itemtype' => ['LIKE', 'GlpiPlugin\\\\Mantenimientos\\\\%'],
+    ]);
+
+    return true;
+}
