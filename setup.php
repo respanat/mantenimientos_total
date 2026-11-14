@@ -14,9 +14,11 @@
 use GlpiPlugin\Mantenimientos\Menu;
 use GlpiPlugin\Mantenimientos\Profile;
 
-define('PLUGIN_MANTENIMIENTOS_VERSION', '0.1.0');
-define('PLUGIN_MANTENIMIENTOS_MIN_GLPI', '11.0.0');
-define('PLUGIN_MANTENIMIENTOS_MAX_GLPI', '11.0.99');
+define('PLUGIN_MANTENIMIENTOS_VERSION', '0.2.0');
+// Compatible con GLPI 10, 11 y 12 (ver src/Compat.php).
+// 'max' es exclusivo: subirlo a 13.99.99 cuando GLPI 13 exista y se haya probado.
+define('PLUGIN_MANTENIMIENTOS_MIN_GLPI', '10.0.0');
+define('PLUGIN_MANTENIMIENTOS_MAX_GLPI', '12.99.99');
 
 /**
  * Inicialización del plugin: registro de clases, pestañas y menú.
@@ -24,6 +26,9 @@ define('PLUGIN_MANTENIMIENTOS_MAX_GLPI', '11.0.99');
 function plugin_init_mantenimientos(): void
 {
     global $PLUGIN_HOOKS;
+
+    // Obligatorio en GLPI 10; ignorado en 11 y 12
+    $PLUGIN_HOOKS['csrf_compliant']['mantenimientos'] = true;
 
     if (!Plugin::isPluginActive('mantenimientos')) {
         return;
@@ -55,7 +60,7 @@ function plugin_version_mantenimientos(): array
                 'max' => PLUGIN_MANTENIMIENTOS_MAX_GLPI,
             ],
             'php'  => [
-                'min' => '8.2',
+                'min' => '8.1', // GLPI 12 exige 8.3 por su cuenta
             ],
         ],
     ];

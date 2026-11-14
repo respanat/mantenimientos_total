@@ -17,11 +17,10 @@ use Session;
 
 /**
  * Pestaña "Mantenimientos" en Administración > Perfiles para asignar permisos.
+ * No redeclara \$rightname: hereda el de \Profile ('profile'), válido en GLPI 10, 11 y 12.
  */
 class Profile extends \Profile
 {
-    public static $rightname = 'profile';
-
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
         if ($item instanceof \Profile && $item->getField('id')) {
@@ -80,7 +79,7 @@ class Profile extends \Profile
 
         echo "<div class='spaced'>";
         if ($canedit) {
-            echo "<form method='post' action='" . htmlescape($profile->getFormURL()) . "'>";
+            echo "<form method='post' action='" . Compat::e($profile->getFormURL()) . "'>";
         }
 
         $profile->displayRightsChoiceMatrix(self::getAllRights(), [

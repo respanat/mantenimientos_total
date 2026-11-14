@@ -11,21 +11,28 @@
 
 namespace GlpiPlugin\Mantenimientos;
 
-use CommonDBChild;
+use GlpiPlugin\Mantenimientos\Base\PlanTaskBase;
 
 /**
  * Tarea de la plantilla de checklist de un plan.
- * Tabla: glpi_plugin_mantenimientos_plantasks
+ *
+ * Clase final: solo declara las propiedades que GLPI 12 tipa en el núcleo.
+ * Toda la lógica está en Base\PlanTaskBase. Ver Compat::typedCoreProperties().
  */
-class PlanTask extends CommonDBChild
-{
-    public static $rightname = 'plugin_mantenimientos_plan';
-
-    public static $itemtype = Plan::class;
-    public static $items_id = 'plugin_mantenimientos_plans_id';
-
-    public static function getTypeName($nb = 0)
+if (Compat::typedCoreProperties()) {
+    // GLPI 12+
+    class PlanTask extends PlanTaskBase
     {
-        return _n('Tarea del checklist', 'Tareas del checklist', $nb, 'mantenimientos');
+        public static string $rightname = 'plugin_mantenimientos_plan';
+        public static string $itemtype = Plan::class;
+        public static string $items_id = 'plugin_mantenimientos_plans_id';
+    }
+} else {
+    // GLPI 10 y 11
+    class PlanTask extends PlanTaskBase
+    {
+        public static $rightname = 'plugin_mantenimientos_plan';
+        public static $itemtype = Plan::class;
+        public static $items_id = 'plugin_mantenimientos_plans_id';
     }
 }

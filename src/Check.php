@@ -11,36 +11,28 @@
 
 namespace GlpiPlugin\Mantenimientos;
 
-use CommonDBChild;
+use GlpiPlugin\Mantenimientos\Base\CheckBase;
 
 /**
  * Tarea del checklist ejecutada en un mantenimiento.
- * Tabla: glpi_plugin_mantenimientos_checks
+ *
+ * Clase final: solo declara las propiedades que GLPI 12 tipa en el núcleo.
+ * Toda la lógica está en Base\CheckBase. Ver Compat::typedCoreProperties().
  */
-class Check extends CommonDBChild
-{
-    public static $rightname = 'plugin_mantenimientos_maintenance';
-
-    public static $itemtype = Maintenance::class;
-    public static $items_id = 'plugin_mantenimientos_maintenances_id';
-
-    public const RESULT_PENDING = 0;
-    public const RESULT_DONE    = 1;
-    public const RESULT_NOT_DONE = 2;
-    public const RESULT_NA      = 3;
-
-    public static function getTypeName($nb = 0)
+if (Compat::typedCoreProperties()) {
+    // GLPI 12+
+    class Check extends CheckBase
     {
-        return _n('Verificación', 'Checklist', $nb, 'mantenimientos');
+        public static string $rightname = 'plugin_mantenimientos_maintenance';
+        public static string $itemtype = Maintenance::class;
+        public static string $items_id = 'plugin_mantenimientos_maintenances_id';
     }
-
-    public static function getResults(): array
+} else {
+    // GLPI 10 y 11
+    class Check extends CheckBase
     {
-        return [
-            self::RESULT_PENDING  => __('Pendiente', 'mantenimientos'),
-            self::RESULT_DONE     => __('Hecho', 'mantenimientos'),
-            self::RESULT_NOT_DONE => __('No hecho', 'mantenimientos'),
-            self::RESULT_NA       => __('No aplica', 'mantenimientos'),
-        ];
+        public static $rightname = 'plugin_mantenimientos_maintenance';
+        public static $itemtype = Maintenance::class;
+        public static $items_id = 'plugin_mantenimientos_maintenances_id';
     }
 }

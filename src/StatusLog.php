@@ -11,37 +11,28 @@
 
 namespace GlpiPlugin\Mantenimientos;
 
-use CommonDBChild;
+use GlpiPlugin\Mantenimientos\Base\StatusLogBase;
 
 /**
- * Bitácora de cambios de estado. Base de las métricas de tiempos
- * (tiempo de reparación, tiempo en proveedor, etc.).
- * Tabla: glpi_plugin_mantenimientos_statuslogs
+ * Bitácora de cambios de estado.
+ *
+ * Clase final: solo declara las propiedades que GLPI 12 tipa en el núcleo.
+ * Toda la lógica está en Base\StatusLogBase. Ver Compat::typedCoreProperties().
  */
-class StatusLog extends CommonDBChild
-{
-    public static $rightname = 'plugin_mantenimientos_maintenance';
-
-    public static $itemtype = Maintenance::class;
-    public static $items_id = 'plugin_mantenimientos_maintenances_id';
-
-    public static function getTypeName($nb = 0)
+if (Compat::typedCoreProperties()) {
+    // GLPI 12+
+    class StatusLog extends StatusLogBase
     {
-        return _n('Cambio de estado', 'Cambios de estado', $nb, 'mantenimientos');
+        public static string $rightname = 'plugin_mantenimientos_maintenance';
+        public static string $itemtype = Maintenance::class;
+        public static string $items_id = 'plugin_mantenimientos_maintenances_id';
     }
-
-    /**
-     * Registra un cambio de estado.
-     */
-    public static function record(int $maintenances_id, int $old_status, int $new_status, string $comment = ''): void
+} else {
+    // GLPI 10 y 11
+    class StatusLog extends StatusLogBase
     {
-        (new self())->add([
-            'plugin_mantenimientos_maintenances_id' => $maintenances_id,
-            'old_status' => $old_status,
-            'new_status' => $new_status,
-            'comment'    => $comment,
-            'users_id'   => \Session::getLoginUserID() ?: 0,
-            'date'       => $_SESSION['glpi_currenttime'] ?? date('Y-m-d H:i:s'),
-        ]);
+        public static $rightname = 'plugin_mantenimientos_maintenance';
+        public static $itemtype = Maintenance::class;
+        public static $items_id = 'plugin_mantenimientos_maintenances_id';
     }
 }

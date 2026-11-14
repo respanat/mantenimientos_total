@@ -11,24 +11,24 @@
 
 namespace GlpiPlugin\Mantenimientos;
 
-use CommonGLPI;
+use GlpiPlugin\Mantenimientos\Base\MetricsBase;
 
 /**
- * Módulo de seguimiento y control (cumplimiento, seguimiento, costos).
- * Sin tabla propia: calcula sobre maintenances, statuslogs y costs.
- * Los cálculos se implementan en la siguiente fase.
+ * Seguimiento y control.
+ *
+ * Clase final: solo declara las propiedades que GLPI 12 tipa en el núcleo.
+ * Toda la lógica está en Base\MetricsBase. Ver Compat::typedCoreProperties().
  */
-class Metrics extends CommonGLPI
-{
-    public static $rightname = 'plugin_mantenimientos_metrics';
-
-    public static function getTypeName($nb = 0)
+if (Compat::typedCoreProperties()) {
+    // GLPI 12+
+    class Metrics extends MetricsBase
     {
-        return __('Seguimiento y control', 'mantenimientos');
+        public static string $rightname = 'plugin_mantenimientos_metrics';
     }
-
-    public static function getIcon()
+} else {
+    // GLPI 10 y 11
+    class Metrics extends MetricsBase
     {
-        return 'ti ti-chart-bar';
+        public static $rightname = 'plugin_mantenimientos_metrics';
     }
 }

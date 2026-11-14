@@ -11,57 +11,28 @@
 
 namespace GlpiPlugin\Mantenimientos;
 
-use CommonDBChild;
+use GlpiPlugin\Mantenimientos\Base\CostBase;
 
 /**
  * Costo asociado a un mantenimiento.
- * Tabla: glpi_plugin_mantenimientos_costs
+ *
+ * Clase final: solo declara las propiedades que GLPI 12 tipa en el núcleo.
+ * Toda la lógica está en Base\CostBase. Ver Compat::typedCoreProperties().
  */
-class Cost extends CommonDBChild
-{
-    public static $rightname = 'plugin_mantenimientos_maintenance';
-
-    public static $itemtype = Maintenance::class;
-    public static $items_id = 'plugin_mantenimientos_maintenances_id';
-
-    public const TYPE_PART     = 1;
-    public const TYPE_LABOR    = 2;
-    public const TYPE_EXTERNAL = 3;
-    public const TYPE_SHIPPING = 4;
-
-    public static function getTypeName($nb = 0)
+if (Compat::typedCoreProperties()) {
+    // GLPI 12+
+    class Cost extends CostBase
     {
-        return _n('Costo', 'Costos', $nb, 'mantenimientos');
+        public static string $rightname = 'plugin_mantenimientos_maintenance';
+        public static string $itemtype = Maintenance::class;
+        public static string $items_id = 'plugin_mantenimientos_maintenances_id';
     }
-
-    public static function getCostTypes(): array
+} else {
+    // GLPI 10 y 11
+    class Cost extends CostBase
     {
-        return [
-            self::TYPE_PART     => __('Repuesto', 'mantenimientos'),
-            self::TYPE_LABOR    => __('Mano de obra', 'mantenimientos'),
-            self::TYPE_EXTERNAL => __('Servicio externo', 'mantenimientos'),
-            self::TYPE_SHIPPING => __('Envío', 'mantenimientos'),
-        ];
-    }
-
-    public function prepareInputForAdd($input)
-    {
-        return $this->computeTotal($input);
-    }
-
-    public function prepareInputForUpdate($input)
-    {
-        return $this->computeTotal($input);
-    }
-
-    /**
-     * total = cantidad × valor unitario (se calcula siempre en servidor).
-     */
-    private function computeTotal(array $input): array
-    {
-        $quantity  = (float) ($input['quantity'] ?? $this->fields['quantity'] ?? 1);
-        $unit_cost = (float) ($input['unit_cost'] ?? $this->fields['unit_cost'] ?? 0);
-        $input['total'] = round($quantity * $unit_cost, 4);
-        return $input;
+        public static $rightname = 'plugin_mantenimientos_maintenance';
+        public static $itemtype = Maintenance::class;
+        public static $items_id = 'plugin_mantenimientos_maintenances_id';
     }
 }

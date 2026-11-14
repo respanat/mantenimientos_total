@@ -11,44 +11,24 @@
 
 namespace GlpiPlugin\Mantenimientos;
 
-use CommonDBTM;
+use GlpiPlugin\Mantenimientos\Base\ConfigBase;
 
 /**
- * Configuración clave/valor del plugin (umbrales del semáforo y metas).
- * Tabla: glpi_plugin_mantenimientos_configs
+ * Configuración del plugin (umbrales y metas).
+ *
+ * Clase final: solo declara las propiedades que GLPI 12 tipa en el núcleo.
+ * Toda la lógica está en Base\ConfigBase. Ver Compat::typedCoreProperties().
  */
-class Config extends CommonDBTM
-{
-    public static $rightname = 'plugin_mantenimientos_config';
-
-    /** @var array<string,string>|null */
-    private static ?array $cache = null;
-
-    public static function getTypeName($nb = 0)
+if (Compat::typedCoreProperties()) {
+    // GLPI 12+
+    class Config extends ConfigBase
     {
-        return __('Configuración de mantenimientos', 'mantenimientos');
+        public static string $rightname = 'plugin_mantenimientos_config';
     }
-
-    public static function getValue(string $name, mixed $default = null): mixed
+} else {
+    // GLPI 10 y 11
+    class Config extends ConfigBase
     {
-        if (self::$cache === null) {
-            self::$cache = [];
-            /** @var \DBmysql $DB */
-            global $DB;
-            foreach ($DB->request(['FROM' => self::getTable()]) as $row) {
-                self::$cache[$row['name']] = $row['value'];
-            }
-        }
-        return self::$cache[$name] ?? $default;
-    }
-
-    public static function setValue(string $name, string $value): bool
-    {
-        $config = new self();
-        $ok = $config->getFromDBByCrit(['name' => $name])
-            ? $config->update(['id' => $config->getID(), 'value' => $value])
-            : (bool) $config->add(['name' => $name, 'value' => $value]);
-        self::$cache = null;
-        return $ok;
+        public static $rightname = 'plugin_mantenimientos_config';
     }
 }

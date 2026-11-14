@@ -7,6 +7,10 @@
 - El tablero muestra **solo información de mantenimientos**; el detalle del equipo vive en su ficha.
 - Objetivo: preventivos a tiempo para que los correctivos sean esporádicos.
 
+## Versiones soportadas
+
+GLPI 10.0 a 12.x con un solo código (ver README, sección Compatibilidad). PHP 8.1 o superior.
+
 ## Tablas (`glpi_plugin_mantenimientos_*`)
 
 | Tabla | Contenido |
