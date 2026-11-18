@@ -5,6 +5,10 @@
  #}
 {% import 'components/form/fields_macros.html.twig' as fields %}
 {% set params = params ?? {} %}
+{# Igual que generic_show_form de GLPI (10, 11 y 12): en un registro existente el
+ # encabezado solo abre el <form> si no_header es verdadero. Sin esto, Guardar
+ # queda fuera del formulario y no envía nada. #}
+{% set no_header = no_header|default(not item.isNewItem() and not _get._in_modal|default(false)) %}
 
 <div class="asset">
    {{ include('components/form/header.html.twig', {'in_twig': true}) }}
