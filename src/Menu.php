@@ -74,6 +74,14 @@ class Menu extends CommonGLPI
             }
         }
 
+        if (Session::haveRight(Maintenance::$rightname, READ)) {
+            $menu['options']['item'] = [
+                'title' => Item::getTypeName(Session::getPluralNumber()),
+                'page'  => Item::getSearchURL(false),
+                'icon'  => Item::getIcon(),
+            ];
+        }
+
         return $menu;
     }
 }

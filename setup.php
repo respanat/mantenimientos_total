@@ -11,10 +11,11 @@
  * -------------------------------------------------------------------------
  */
 
+use GlpiPlugin\Mantenimientos\Item;
 use GlpiPlugin\Mantenimientos\Menu;
 use GlpiPlugin\Mantenimientos\Profile;
 
-define('PLUGIN_MANTENIMIENTOS_VERSION', '0.5.0');
+define('PLUGIN_MANTENIMIENTOS_VERSION', '0.6.0');
 // Compatible con GLPI 10, 11 y 12 (ver src/Compat.php).
 // 'max' es exclusivo: subirlo a 13.99.99 cuando GLPI 13 exista y se haya probado.
 define('PLUGIN_MANTENIMIENTOS_MIN_GLPI', '10.0.0');
@@ -36,6 +37,9 @@ function plugin_init_mantenimientos(): void
 
     // Pestaña de permisos en los perfiles de GLPI
     Plugin::registerClass(Profile::class, ['addtabon' => \Profile::class]);
+
+    // Pestaña "Mantenimientos" en la ficha de computadores y teléfonos
+    Plugin::registerClass(Item::class, ['addtabon' => [\Computer::class, \Phone::class]]);
 
     // Menú propio en Administración
     if (Menu::canView()) {

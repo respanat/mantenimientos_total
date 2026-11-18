@@ -11,9 +11,17 @@
 
 namespace GlpiPlugin\Mantenimientos\Base;
 
-use GlpiPlugin\Mantenimientos\Config;
-use GlpiPlugin\Mantenimientos\Plan;
 use CommonDBTM;
+use CommonGLPI;
+use CronTask;
+use DbUtils;
+use GlpiPlugin\Mantenimientos\Compat;
+use GlpiPlugin\Mantenimientos\Config;
+use GlpiPlugin\Mantenimientos\Item;
+use GlpiPlugin\Mantenimientos\Maintenance;
+use GlpiPlugin\Mantenimientos\Plan;
+use Html;
+use Session;
 
 /**
  * Relación equipo ↔ plan y estado del preventivo (semáforo).
@@ -32,47 +40,492 @@ abstract class ItemBase extends CommonDBTM
 
     public static function getTypeName($nb = 0)
     {
-        return _n('Equipo en mantenimiento', 'Equipos en mantenimiento', $nb, 'mantenimientos');
+        return _n('Equipo', 'Equipos', $nb, 'mantenimientos');
+    }
+
+    public static function getIcon()
+    {
+        return 'ti ti-traffic-lights';
+    }
+
+    // ---------------------------------------------------------------------
+    // Semáforo
+    // ---------------------------------------------------------------------
+
+    /**
+     * @return array<string, array{label: string, color: string, text: string}>
+     */
+    public static function getLights(): array
+    {
+        return [
+            self::LIGHT_OVERDUE  => ['label' => __('Vencido', 'mantenimientos'),         'color' => '#d63939', 'text' => '#fff'],
+            self::LIGHT_CRITICAL => ['label' => __('Muy próximo', 'mantenimientos'),     'color' => '#f76707', 'text' => '#fff'],
+            self::LIGHT_WARNING  => ['label' => __('Próximo', 'mantenimientos'),         'color' => '#f59f00', 'text' => '#1d273b'],
+            self::LIGHT_OK       => ['label' => __('Al día', 'mantenimientos'),          'color' => '#2fb344', 'text' => '#fff'],
+            self::LIGHT_REPAIR   => ['label' => __('En correctivo', 'mantenimientos'),   'color' => '#4263eb', 'text' => '#fff'],
+            self::LIGHT_NOPLAN   => ['label' => __('Sin plan', 'mantenimientos'),        'color' => '#adb5bd', 'text' => '#1d273b'],
+        ];
+    }
+
+    public static function lightBadge(string $light): string
+    {
+        $def = self::getLights()[$light] ?? self::getLights()[self::LIGHT_NOPLAN];
+        return sprintf(
+            "<span class='badge' style='background:%s;color:%s'>%s</span>",
+            $def['color'],
+            $def['text'],
+            Compat::e($def['label'])
+        );
     }
 
     /**
-     * Frecuencia efectiva: la propia del equipo o la del plan.
+     * Días que faltan (negativo = días de atraso). null si no hay fecha.
      */
-    public function getEffectiveFrequency(): int
+    public static function daysUntil(?string $date, ?\DateTimeImmutable $today = null): ?int
     {
-        $override = (int) ($this->fields['frequency_days_override'] ?? 0);
-        if ($override > 0) {
-            return $override;
+        if (empty($date)) {
+            return null;
         }
-        $plan = new Plan();
-        if ($plan->getFromDB((int) $this->fields['plugin_mantenimientos_plans_id'])) {
-            return (int) $plan->fields['frequency_days'];
-        }
-        return 0;
+        $today ??= new \DateTimeImmutable('today');
+        return (int) $today->diff(new \DateTimeImmutable($date))->format('%r%a');
     }
 
     /**
      * Calcula el color del semáforo a partir de la próxima fecha.
-     * El caso "correctivo abierto" se resuelve en la capa que consulta Maintenance.
      */
     public static function computeLight(?string $next_due_date, ?\DateTimeImmutable $today = null): string
     {
-        if (empty($next_due_date)) {
+        $days = self::daysUntil($next_due_date, $today);
+        if ($days === null) {
             return self::LIGHT_NOPLAN;
         }
-
-        $today ??= new \DateTimeImmutable('today');
-        $due    = new \DateTimeImmutable($next_due_date);
-        $days   = (int) $today->diff($due)->format('%r%a');
 
         $warning  = (int) Config::getValue('threshold_warning_days', 30);
         $critical = (int) Config::getValue('threshold_critical_days', 7);
 
         return match (true) {
-            $days < 0         => self::LIGHT_OVERDUE,
+            $days < 0          => self::LIGHT_OVERDUE,
             $days <= $critical => self::LIGHT_CRITICAL,
             $days <= $warning  => self::LIGHT_WARNING,
             default            => self::LIGHT_OK,
         };
+    }
+
+    // ---------------------------------------------------------------------
+    // Asignación de planes y cálculo de fechas
+    // ---------------------------------------------------------------------
+
+    /**
+     * Fecha base cuando el equipo no tiene preventivos registrados:
+     * fecha de puesta en servicio > fecha de compra > fecha de alta en GLPI.
+     */
+    private static function baseDate(?string $use_date, ?string $buy_date, ?string $date_creation): string
+    {
+        foreach ([$use_date, $buy_date, $date_creation] as $candidate) {
+            if (!empty($candidate) && !str_starts_with((string) $candidate, '0000')) {
+                return substr((string) $candidate, 0, 10);
+            }
+        }
+        return date('Y-m-d');
+    }
+
+    public static function addDays(string $date, int $days): string
+    {
+        return (new \DateTimeImmutable($date))->modify(sprintf('%+d days', $days))->format('Y-m-d');
+    }
+
+    /**
+     * Sincroniza los equipos con los planes activos:
+     *  - asigna a cada equipo el plan que le corresponde (los planes con subtipos
+     *    específicos tienen prioridad sobre los de "todos los subtipos");
+     *  - calcula la próxima fecha = último preventivo (o fecha base) + frecuencia;
+     *  - respeta los equipos excluidos.
+     *
+     * @return array{assigned: int, updated: int, unassigned: int, total: int}
+     */
+    public static function syncAll(): array
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+
+        $stats  = ['assigned' => 0, 'updated' => 0, 'unassigned' => 0, 'total' => 0];
+        $dbu    = new DbUtils();
+        $now    = date('Y-m-d H:i:s');
+        $table  = Item::getTable();
+
+        // Planes activos, los específicos primero
+        $plans = [];
+        foreach ($DB->request(['FROM' => Plan::getTable(), 'WHERE' => ['is_active' => 1], 'ORDER' => 'id']) as $row) {
+            $row['_types']    = Plan::decodeTypesIds($row['types_ids'] ?? null);
+            $row['_entities'] = $row['is_recursive']
+                ? array_map('intval', array_values($dbu->getSonsOf('glpi_entities', (int) $row['entities_id'])))
+                : [(int) $row['entities_id']];
+            $plans[] = $row;
+        }
+        usort($plans, fn ($a, $b) => [count($a['_types']) === 0, $a['id']] <=> [count($b['_types']) === 0, $b['id']]);
+
+        foreach (Plan::SUPPORTED_ITEMTYPES as $itemtype => $type_class) {
+            $asset_table = $itemtype::getTable();
+            $type_field  = $type_class::getForeignKeyField();
+
+            // Registros existentes del plugin para este tipo
+            $existing = [];
+            foreach ($DB->request(['FROM' => $table, 'WHERE' => ['itemtype' => $itemtype]]) as $row) {
+                $existing[(int) $row['items_id']] = $row;
+            }
+
+            // Fechas de compra / puesta en servicio
+            $infocoms = [];
+            foreach (
+                $DB->request([
+                    'SELECT' => ['items_id', 'use_date', 'buy_date'],
+                    'FROM'   => 'glpi_infocoms',
+                    'WHERE'  => ['itemtype' => $itemtype],
+                ]) as $row
+            ) {
+                $infocoms[(int) $row['items_id']] = $row;
+            }
+
+            $assets = $DB->request([
+                'SELECT' => ['id', 'entities_id', $type_field, 'date_creation'],
+                'FROM'   => $asset_table,
+                'WHERE'  => ['is_deleted' => 0, 'is_template' => 0],
+            ]);
+
+            foreach ($assets as $asset) {
+                $stats['total']++;
+                $id       = (int) $asset['id'];
+                $row      = $existing[$id] ?? null;
+                $types_id = (int) $asset[$type_field];
+                $entity   = (int) $asset['entities_id'];
+
+                if ($row !== null && (int) $row['is_excluded'] === 1) {
+                    continue;
+                }
+
+                $plan = null;
+                foreach ($plans as $candidate) {
+                    if (
+                        $candidate['itemtype'] === $itemtype
+                        && in_array($entity, $candidate['_entities'], true)
+                        && ($candidate['_types'] === [] || in_array($types_id, $candidate['_types'], true))
+                    ) {
+                        $plan = $candidate;
+                        break;
+                    }
+                }
+
+                if ($plan === null) {
+                    if ($row !== null && (int) $row['plugin_mantenimientos_plans_id'] > 0) {
+                        $DB->update($table, [
+                            'plugin_mantenimientos_plans_id' => 0,
+                            'next_due_date' => null,
+                            'date_mod'      => $now,
+                        ], ['id' => $row['id']]);
+                        $stats['unassigned']++;
+                    }
+                    continue;
+                }
+
+                $frequency = (int) ($row['frequency_days_override'] ?? 0) > 0
+                    ? (int) $row['frequency_days_override']
+                    : (int) $plan['frequency_days'];
+                $last = $row['last_preventive_date'] ?? null;
+                $base = !empty($last)
+                    ? $last
+                    : self::baseDate(
+                        $infocoms[$id]['use_date'] ?? null,
+                        $infocoms[$id]['buy_date'] ?? null,
+                        $asset['date_creation'] ?? null
+                    );
+                $next = self::addDays($base, $frequency);
+
+                if ($row === null) {
+                    $DB->insert($table, [
+                        'itemtype'                       => $itemtype,
+                        'items_id'                       => $id,
+                        'plugin_mantenimientos_plans_id' => (int) $plan['id'],
+                        'next_due_date'                  => $next,
+                        'date_creation'                  => $now,
+                        'date_mod'                       => $now,
+                    ]);
+                    $stats['assigned']++;
+                } elseif (
+                    (int) $row['plugin_mantenimientos_plans_id'] !== (int) $plan['id']
+                    || ($row['next_due_date'] ?? null) !== $next
+                ) {
+                    $DB->update($table, [
+                        'plugin_mantenimientos_plans_id' => (int) $plan['id'],
+                        'next_due_date'                  => $next,
+                        'date_mod'                       => $now,
+                    ], ['id' => $row['id']]);
+                    $stats['updated']++;
+                }
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Recalcula un solo equipo (tras editar su frecuencia, exclusión o último preventivo).
+     */
+    public static function syncOne(string $itemtype, int $items_id): void
+    {
+        // La sincronización completa es barata y garantiza las mismas reglas.
+        self::syncAll();
+    }
+
+    // ---------------------------------------------------------------------
+    // Consultas para el listado y el tablero
+    // ---------------------------------------------------------------------
+
+    /**
+     * Equipos con su plan, usuario asignado y semáforo, dentro de las entidades
+     * activas del usuario. Ordenados del más atrasado al más holgado.
+     *
+     * @param array{itemtype?: string, light?: string, plans_id?: int} $filters
+     * @return list<array<string, mixed>>
+     */
+    public static function getRows(array $filters = []): array
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+
+        $dbu  = new DbUtils();
+        $rows = [];
+
+        foreach (Plan::SUPPORTED_ITEMTYPES as $itemtype => $type_class) {
+            if (!empty($filters['itemtype']) && $filters['itemtype'] !== $itemtype) {
+                continue;
+            }
+            $asset_table = $itemtype::getTable();
+            $type_field  = $type_class::getForeignKeyField();
+
+            $where = [
+                'i.itemtype'    => $itemtype,
+                'a.is_deleted'  => 0,
+                'a.is_template' => 0,
+            ] + $dbu->getEntitiesRestrictCriteria('a', '', '', true);
+            if (!empty($filters['plans_id'])) {
+                $where['i.plugin_mantenimientos_plans_id'] = (int) $filters['plans_id'];
+            }
+
+            $iterator = $DB->request([
+                'SELECT' => [
+                    'i.id', 'i.items_id', 'i.itemtype', 'i.plugin_mantenimientos_plans_id',
+                    'i.last_preventive_date', 'i.next_due_date', 'i.is_excluded',
+                    'a.name AS asset_name', 'a.users_id',
+                    'p.name AS plan_name',
+                    't.name AS type_name',
+                    'u.name AS user_login', 'u.realname', 'u.firstname',
+                ],
+                'FROM'      => Item::getTable() . ' AS i',
+                'INNER JOIN' => [
+                    $asset_table . ' AS a' => ['ON' => ['i' => 'items_id', 'a' => 'id']],
+                ],
+                'LEFT JOIN' => [
+                    Plan::getTable() . ' AS p'           => ['ON' => ['i' => 'plugin_mantenimientos_plans_id', 'p' => 'id']],
+                    $type_class::getTable() . ' AS t'    => ['ON' => ['a' => $type_field, 't' => 'id']],
+                    'glpi_users AS u'                    => ['ON' => ['a' => 'users_id', 'u' => 'id']],
+                ],
+                'WHERE' => $where,
+            ]);
+
+            foreach ($iterator as $row) {
+                $has_plan = (int) $row['plugin_mantenimientos_plans_id'] > 0 && !(int) $row['is_excluded'];
+                $row['light'] = $has_plan ? self::computeLight($row['next_due_date']) : self::LIGHT_NOPLAN;
+                $row['days']  = $has_plan ? self::daysUntil($row['next_due_date']) : null;
+                $row['user']  = trim(($row['firstname'] ?? '') . ' ' . ($row['realname'] ?? '')) ?: ($row['user_login'] ?? '');
+
+                if (!empty($filters['light']) && $filters['light'] !== $row['light']) {
+                    continue;
+                }
+                $rows[] = $row;
+            }
+        }
+
+        usort($rows, fn ($a, $b) => [$a['days'] === null, $a['days']] <=> [$b['days'] === null, $b['days']]);
+        return $rows;
+    }
+
+    /**
+     * Conteo por color del semáforo. "Sin plan" incluye los equipos que nunca
+     * quedaron asociados a un plan.
+     *
+     * @return array<string, int>
+     */
+    public static function getCounts(): array
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+
+        $counts = array_fill_keys(array_keys(self::getLights()), 0);
+        $with_record = 0;
+        foreach (self::getRows() as $row) {
+            $counts[$row['light']]++;
+            $with_record++;
+        }
+
+        // Equipos sin registro en el plugin
+        $dbu   = new DbUtils();
+        $total = 0;
+        foreach (array_keys(Plan::SUPPORTED_ITEMTYPES) as $itemtype) {
+            $total += (int) $DB->request([
+                'COUNT' => 'cpt',
+                'FROM'  => $itemtype::getTable(),
+                'WHERE' => ['is_deleted' => 0, 'is_template' => 0]
+                    + $dbu->getEntitiesRestrictCriteria($itemtype::getTable(), '', '', true),
+            ])->current()['cpt'];
+        }
+        $counts[self::LIGHT_NOPLAN] += max(0, $total - $with_record);
+
+        return $counts;
+    }
+
+    // ---------------------------------------------------------------------
+    // Tarea programada (diaria)
+    // ---------------------------------------------------------------------
+
+    public static function cronInfo($name)
+    {
+        if ($name === 'syncItems') {
+            return ['description' => __('Mantenimientos: asignar planes a equipos y recalcular fechas', 'mantenimientos')];
+        }
+        return [];
+    }
+
+    public static function cronSyncItems($task)
+    {
+        $stats = self::syncAll();
+        if ($task instanceof CronTask) {
+            $task->addVolume($stats['assigned'] + $stats['updated'] + $stats['unassigned']);
+            $task->log(sprintf(
+                'Equipos: %d, asignados: %d, actualizados: %d, sin plan: %d',
+                $stats['total'],
+                $stats['assigned'],
+                $stats['updated'],
+                $stats['unassigned']
+            ));
+        }
+        return 1;
+    }
+
+    // ---------------------------------------------------------------------
+    // Pestaña "Mantenimientos" en la ficha del computador / teléfono
+    // ---------------------------------------------------------------------
+
+    public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
+    {
+        if (
+            array_key_exists($item::class, Plan::SUPPORTED_ITEMTYPES)
+            && !$item->isNewItem()
+            && Session::haveRight(Maintenance::$rightname, READ)
+        ) {
+            return self::createTabEntry(_n('Mantenimiento', 'Mantenimientos', 2, 'mantenimientos'), 0, null, Maintenance::getIcon());
+        }
+        return '';
+    }
+
+    public static function displayTabContentForItem(CommonGLPI $item, $tabnum = 1, $withtemplate = 0)
+    {
+        if ($item instanceof CommonDBTM) {
+            self::showForAsset($item);
+        }
+        return true;
+    }
+
+    public static function showForAsset(CommonDBTM $asset): void
+    {
+        $record = new Item();
+        $found  = $record->getFromDBByCrit(['itemtype' => $asset::class, 'items_id' => $asset->getID()]);
+
+        $plan = new Plan();
+        $has_plan = $found && $plan->getFromDB((int) $record->fields['plugin_mantenimientos_plans_id']);
+
+        $next  = $found ? ($record->fields['next_due_date'] ?? null) : null;
+        $light = $found && (int) $record->fields['is_excluded'] === 1 ? self::LIGHT_NOPLAN : self::computeLight($next);
+        $days  = self::daysUntil($next);
+
+        echo "<div class='card mt-2'><div class='card-body'>";
+        echo "<div class='d-flex align-items-center mb-3'>" . self::lightBadge($light);
+        if ($days !== null) {
+            echo "<span class='ms-2 text-muted'>" . Compat::e(
+                $days < 0
+                    ? sprintf(__('%d días de atraso', 'mantenimientos'), -$days)
+                    : sprintf(__('faltan %d días', 'mantenimientos'), $days)
+            ) . "</span>";
+        }
+        echo "</div>";
+
+        echo "<dl class='row mb-0'>";
+        $rows = [
+            __('Plan', 'mantenimientos') => $has_plan
+                ? "<a href='" . Compat::e(Plan::getFormURLWithID($plan->getID())) . "'>" . Compat::e($plan->fields['name'], true) . "</a>"
+                : Compat::e(__('Ninguno (sin plan que aplique o equipo excluido)', 'mantenimientos')),
+            __('Último preventivo', 'mantenimientos') => Compat::e(
+                $found && !empty($record->fields['last_preventive_date'])
+                    ? Html::convDate($record->fields['last_preventive_date'])
+                    : __('Sin registro', 'mantenimientos')
+            ),
+            __('Próximo preventivo', 'mantenimientos') => Compat::e($next ? Html::convDate($next) : '—'),
+        ];
+        foreach ($rows as $label => $value) {
+            echo "<dt class='col-sm-3'>" . Compat::e($label) . "</dt><dd class='col-sm-9'>{$value}</dd>";
+        }
+        echo "</dl></div></div>";
+
+        if (!$found || !Session::haveRight(Plan::$rightname, UPDATE)) {
+            return;
+        }
+
+        // Ajustes del equipo
+        $id = (int) $record->getID();
+        echo "<form method='post' action='" . Compat::e(Item::getFormURL()) . "' class='card mt-3'><div class='card-body'>";
+        echo "<h4 class='card-title'>" . Compat::e(__('Ajustes de este equipo', 'mantenimientos')) . "</h4>";
+        echo "<input type='hidden' name='id' value='{$id}'>";
+        echo "<div class='row g-3'>";
+
+        echo "<div class='col-md-4'><label class='form-label'>" . Compat::e(__('Último preventivo (histórico)', 'mantenimientos')) . "</label>";
+        echo "<input type='date' name='last_preventive_date' class='form-control' value='"
+            . Compat::e((string) ($record->fields['last_preventive_date'] ?? '')) . "'>";
+        echo "<div class='form-hint'>" . Compat::e(__('Para cargar el último preventivo hecho antes de usar el plugin.', 'mantenimientos')) . "</div></div>";
+
+        echo "<div class='col-md-4'><label class='form-label'>" . Compat::e(__('Frecuencia propia (días)', 'mantenimientos')) . "</label>";
+        echo "<input type='number' min='0' max='3650' name='frequency_days_override' class='form-control' value='"
+            . (int) $record->fields['frequency_days_override'] . "'>";
+        echo "<div class='form-hint'>" . Compat::e(__('0 = usar la del plan.', 'mantenimientos')) . "</div></div>";
+
+        echo "<div class='col-md-4'><label class='form-label'>" . Compat::e(__('Excluir del plan', 'mantenimientos')) . "</label>";
+        \Dropdown::showYesNo('is_excluded', (int) $record->fields['is_excluded'], -1, ['width' => '100%']);
+        echo "</div>";
+
+        echo "<div class='col-12'><label class='form-label'>" . Compat::e(__('Motivo de exclusión', 'mantenimientos')) . "</label>";
+        echo "<input type='text' maxlength='255' name='exclusion_reason' class='form-control' value='"
+            . Compat::e((string) ($record->fields['exclusion_reason'] ?? ''), true) . "'></div>";
+
+        echo "</div></div><div class='card-footer text-end'>";
+        echo "<button type='submit' name='update' value='1' class='btn btn-primary'><i class='ti ti-device-floppy me-1'></i>"
+            . Compat::e(_x('button', 'Save')) . "</button></div>";
+        Html::closeForm();
+    }
+
+    public function prepareInputForUpdate($input)
+    {
+        if (array_key_exists('last_preventive_date', $input) && $input['last_preventive_date'] === '') {
+            $input['last_preventive_date'] = 'NULL';
+        }
+        if (isset($input['frequency_days_override'])) {
+            $input['frequency_days_override'] = max(0, (int) $input['frequency_days_override']);
+        }
+        if (isset($input['is_excluded']) && (int) $input['is_excluded'] === 1) {
+            $input['next_due_date'] = 'NULL';
+        }
+        return $input;
+    }
+
+    public function post_updateItem($history = true)
+    {
+        self::syncOne((string) $this->fields['itemtype'], (int) $this->fields['items_id']);
     }
 }

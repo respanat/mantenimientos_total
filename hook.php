@@ -304,6 +304,18 @@ function plugin_mantenimientos_install(): bool
         }
     }
 
+    // 4. Tarea programada diaria: asignar planes y recalcular fechas
+    CronTask::register(
+        'GlpiPlugin\\Mantenimientos\\Item',
+        'syncItems',
+        DAY_TIMESTAMP,
+        [
+            'comment' => 'Mantenimientos: asignar planes a equipos y recalcular fechas',
+            'mode'    => CronTask::MODE_EXTERNAL,
+            'state'   => CronTask::STATE_WAITING,
+        ]
+    );
+
     $migration->executeMigration();
     return true;
 }
@@ -318,6 +330,8 @@ function plugin_mantenimientos_uninstall(): bool
             $DB->doQuery("DROP TABLE `{$table}`");
         }
     }
+
+    CronTask::unregister('Mantenimientos');
 
     $rightnames = array_keys(plugin_mantenimientos_rights());
     ProfileRight::deleteProfileRights($rightnames);
