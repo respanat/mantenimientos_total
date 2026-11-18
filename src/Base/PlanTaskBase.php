@@ -16,6 +16,7 @@ use CommonGLPI;
 use Dropdown;
 use Glpi\Application\View\TemplateRenderer;
 use GlpiPlugin\Mantenimientos\Compat;
+use GlpiPlugin\Mantenimientos\DefaultChecklist;
 use GlpiPlugin\Mantenimientos\Plan;
 use GlpiPlugin\Mantenimientos\PlanTask;
 use Html;
@@ -93,6 +94,20 @@ abstract class PlanTaskBase extends CommonDBChild
                 . "<i class='ti ti-plus me-1'></i>" . Compat::e(_x('button', 'Add')) . "</button></div>";
             echo "</div>";
             Html::closeForm();
+
+            $defaults = DefaultChecklist::forItemtype((string) $plan->fields['itemtype']);
+            if ($defaults !== []) {
+                echo "<form method='post' action='" . Compat::e($form_url) . "' class='mb-3'>";
+                echo "<input type='hidden' name='plugin_mantenimientos_plans_id' value='{$plans_id}'>";
+                echo "<button type='submit' name='load_defaults' value='1' class='btn btn-outline-secondary btn-sm'>"
+                    . "<i class='ti ti-playlist-add me-1'></i>"
+                    . Compat::e(sprintf(__('Cargar checklist sugerido (%d tareas)', 'mantenimientos'), count($defaults)))
+                    . "</button>";
+                echo "<span class='text-muted small ms-2'>"
+                    . Compat::e(__('Solo agrega las que falten; luego puede editarlas o eliminarlas.', 'mantenimientos'))
+                    . "</span>";
+                Html::closeForm();
+            }
         }
 
         $rows = $DB->request([
@@ -139,6 +154,48 @@ abstract class PlanTaskBase extends CommonDBChild
             echo "</td></tr>";
         }
         echo "</tbody></table></div>";
+    }
+
+    /**
+     * Agrega al plan las tareas sugeridas para su tipo de equipo que aún no tenga
+     * (comparando por nombre). Devuelve cuántas agregó.
+     */
+    public static function loadDefaults(Plan $plan): int
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+
+        $plans_id = (int) $plan->getID();
+        $existing = [];
+        foreach (
+            $DB->request([
+                'SELECT' => ['name'],
+                'FROM'   => PlanTask::getTable(),
+                'WHERE'  => ['plugin_mantenimientos_plans_id' => $plans_id],
+            ]) as $row
+        ) {
+            $existing[mb_strtolower(trim(html_entity_decode((string) $row['name'], ENT_QUOTES, 'UTF-8')))] = true;
+        }
+
+        $added = 0;
+        foreach (DefaultChecklist::forItemtype((string) $plan->fields['itemtype']) as [$name, $mandatory, $description]) {
+            if (isset($existing[mb_strtolower($name)])) {
+                continue;
+            }
+            $task = new PlanTask();
+            if (
+                $task->add([
+                    'plugin_mantenimientos_plans_id' => $plans_id,
+                    'name'         => $name,
+                    'description'  => $description,
+                    'is_mandatory' => $mandatory ? 1 : 0,
+                    'is_active'    => 1,
+                ])
+            ) {
+                $added++;
+            }
+        }
+        return $added;
     }
 
     // ---------------------------------------------------------------------

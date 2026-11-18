@@ -11,11 +11,15 @@
 
 GLPI 10.0 a 12.x con un solo código (ver README, sección Compatibilidad). PHP 8.1 o superior.
 
+## Alcance de equipos
+
+Computadores (PC y portátiles, por subtipo de inventario) y teléfonos/tablets. Impresoras fuera de alcance (rentadas, 2026-11-18).
+
 ## Tablas (`glpi_plugin_mantenimientos_*`)
 
 | Tabla | Contenido |
 |---|---|
-| `plans` | Plan por tipo de equipo (`itemtype` + `types_id`), frecuencia, tolerancia, interno/externo, proveedor por defecto. |
+| `plans` | Plan por tipo de equipo (`itemtype` + `types_ids` JSON, varios subtipos), frecuencia, tolerancia, interno/externo, proveedor por defecto. |
 | `plantasks` | Plantilla del checklist del plan (orden, obligatoria). |
 | `items` | Equipo ↔ plan, frecuencia propia, último preventivo, próxima fecha, exclusión. |
 | `maintenances` | Registro preventivo/correctivo: estado, fechas, técnico, usuario asignado, enlace a ticket, preventivo origen (`..._id_parent`), diagnóstico, solución, resultado, proveedor, referencia, envío y devolución. |

@@ -23,7 +23,17 @@ Session::checkRight(Plan::$rightname, READ);
 
 $task = new PlanTask();
 
-if (isset($_POST['add'])) {
+if (isset($_POST['load_defaults'])) {
+    $plan = new Plan();
+    $plan->check((int) ($_POST['plugin_mantenimientos_plans_id'] ?? 0), UPDATE);
+    $added = PlanTask::loadDefaults($plan);
+    Session::addMessageAfterRedirect(
+        $added > 0
+            ? sprintf(__('Se agregaron %d tareas sugeridas.', 'mantenimientos'), $added)
+            : __('El plan ya tenía todas las tareas sugeridas.', 'mantenimientos')
+    );
+    Html::back();
+} elseif (isset($_POST['add'])) {
     $task->check(-1, CREATE, $_POST);
     $task->add($_POST);
     Html::back();

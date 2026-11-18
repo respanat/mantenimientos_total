@@ -1,8 +1,8 @@
 # Mantenimientos — Plugin para GLPI 10, 11 y 12
 
-Gestión de **mantenimientos preventivos y correctivos** del parque informático (PC, portátiles, impresoras, tablets y teléfonos), **independiente del sistema de tickets**.
+Gestión de **mantenimientos preventivos y correctivos** del parque informático (PC, portátiles, tablets y teléfonos), **independiente del sistema de tickets**. Las impresoras quedan fuera porque son rentadas.
 
-- Planes por tipo de equipo con frecuencia, tolerancia y checklist.
+- Planes por tipo de equipo (varios subtipos por plan) con frecuencia, tolerancia y checklist; checklist sugerido para PC/portátil y móviles.
 - Preventivo con checklist obligatorio y cálculo automático de la próxima fecha.
 - Correctivo (reparación) con flujo para proveedor externo (envío, estadía, devolución).
 - Costos por mantenimiento.
@@ -51,7 +51,7 @@ Al instalar, los perfiles con permiso de actualizar la configuración (Super-Adm
 |---|---|---|
 | 1 | Estructura, tablas, permisos, menú | ✅ v0.1.0 |
 | 1 | Compatibilidad GLPI 10 → 12 en un solo código | ✅ v0.2.0 |
-| 1 | Planes y checklist (pantallas) | ⏳ |
+| 1 | Planes y checklist (pantallas) | ✅ v0.3.0 – v0.5.0 |
 | 1 | Registro de preventivos y correctivos, costos | ⏳ |
 | 1 | Tablero, semáforo, historial, métricas | ⏳ |
 | 2 | Aviso al usuario asignado al iniciar sesión en GLPI / correo | 🔜 |

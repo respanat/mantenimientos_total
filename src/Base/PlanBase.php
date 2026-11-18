@@ -29,10 +29,12 @@ abstract class PlanBase extends CommonDBTM
     public const SERVICE_INTERNAL = 1;
     public const SERVICE_EXTERNAL = 2;
 
-    /** Tipos de equipo soportados en la fase 1 => clase de su subtipo (dropdown) */
+    /**
+     * Tipos de equipo soportados => clase de su subtipo (dropdown).
+     * Las impresoras quedan fuera: son rentadas y su mantenimiento es del arrendador.
+     */
     public const SUPPORTED_ITEMTYPES = [
         \Computer::class => \ComputerType::class, // PC / Portátil (subtipo)
-        \Printer::class  => \PrinterType::class,
         \Phone::class    => \PhoneType::class,    // Teléfonos y tablets (subtipo)
     ];
 

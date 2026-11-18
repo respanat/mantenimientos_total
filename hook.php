@@ -38,7 +38,7 @@ function plugin_mantenimientos_schema(string $sign): array
             `entities_id` {$fk},
             `is_recursive` tinyint NOT NULL DEFAULT '0',
             `name` varchar(255) DEFAULT NULL,
-            `itemtype` varchar(100) NOT NULL DEFAULT '' COMMENT 'Computer, Printer, Phone...',
+            `itemtype` varchar(100) NOT NULL DEFAULT '' COMMENT 'Computer, Phone',
             `types_ids` text COMMENT 'JSON con los subtipos (ej. ComputerType Notebook, Convertible). Vacío = todos',
             `frequency_days` int NOT NULL DEFAULT '180',
             `tolerance_days` int NOT NULL DEFAULT '15',
