@@ -15,6 +15,7 @@ use GlpiPlugin\Mantenimientos\Item;
 use GlpiPlugin\Mantenimientos\Maintenance;
 use GlpiPlugin\Mantenimientos\Menu;
 use GlpiPlugin\Mantenimientos\Plan;
+use GlpiPlugin\Mantenimientos\Ui;
 
 // GLPI 10 necesita el bootstrap clásico; en 11 y 12 el núcleo ya está cargado.
 if (!defined('GLPI_ROOT')) {
@@ -35,16 +36,7 @@ echo "<div class='card-body'>";
 if (Session::haveRight(Maintenance::$rightname, READ)) {
     $counts = Item::getCounts();
     echo "<h4 class='mb-2'>" . Compat::e(__('Estado del preventivo', 'mantenimientos')) . "</h4>";
-    echo "<div class='row g-2 mb-3'>";
-    foreach (Item::getLights() as $key => $def) {
-        $url = Item::getSearchURL() . '?light=' . urlencode($key);
-        echo "<div class='col-6 col-md-4 col-xl-2'><a href='" . Compat::e($url) . "' class='card card-sm text-decoration-none'>";
-        echo "<div class='card-body d-flex align-items-center'>";
-        echo "<span class='rounded me-2' style='width:12px;height:36px;background:{$def['color']}'></span>";
-        echo "<div><div class='h2 mb-0'>" . (int) $counts[$key] . "</div><div class='text-muted'>" . Compat::e($def['label']) . "</div></div>";
-        echo "</div></a></div>";
-    }
-    echo "</div>";
+    echo Ui::lightTiles($counts, fn (string $key) => Item::getSearchURL() . '?light=' . urlencode($key));
     echo "<a class='btn btn-outline-primary me-2' href='" . Compat::e(Item::getSearchURL()) . "'><i class='" . Compat::e(Item::getIcon()) . " me-1'></i>"
         . Compat::e(Item::getTypeName(Session::getPluralNumber())) . "</a>";
 }

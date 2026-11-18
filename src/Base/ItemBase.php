@@ -53,17 +53,47 @@ abstract class ItemBase extends CommonDBTM
     // ---------------------------------------------------------------------
 
     /**
-     * @return array<string, array{label: string, color: string, text: string}>
+     * Definición visual del semáforo. "color"/"text" para etiquetas pequeñas,
+     * "tile"/"tile_text" para los mosaicos de los tableros.
+     *
+     * @return array<string, array{label: string, color: string, text: string, tile: string, tile_text: string, icon: string, hint: string}>
      */
     public static function getLights(): array
     {
+        $warning  = (int) Config::getValue('threshold_warning_days', 30);
+        $critical = (int) Config::getValue('threshold_critical_days', 7);
+
         return [
-            self::LIGHT_OVERDUE  => ['label' => __('Vencido', 'mantenimientos'),         'color' => '#d63939', 'text' => '#fff'],
-            self::LIGHT_CRITICAL => ['label' => __('Muy próximo', 'mantenimientos'),     'color' => '#f76707', 'text' => '#fff'],
-            self::LIGHT_WARNING  => ['label' => __('Próximo', 'mantenimientos'),         'color' => '#f59f00', 'text' => '#1d273b'],
-            self::LIGHT_OK       => ['label' => __('Al día', 'mantenimientos'),          'color' => '#2fb344', 'text' => '#fff'],
-            self::LIGHT_REPAIR   => ['label' => __('En correctivo', 'mantenimientos'),   'color' => '#4263eb', 'text' => '#fff'],
-            self::LIGHT_NOPLAN   => ['label' => __('Sin plan', 'mantenimientos'),        'color' => '#adb5bd', 'text' => '#1d273b'],
+            self::LIGHT_OVERDUE  => [
+                'label' => __('Vencido', 'mantenimientos'), 'color' => '#d63939', 'text' => '#fff',
+                'tile'  => '#f07575', 'tile_text' => 'rgba(0,0,0,.75)', 'icon' => 'ti ti-alert-octagon',
+                'hint'  => __('El preventivo ya pasó su fecha', 'mantenimientos'),
+            ],
+            self::LIGHT_CRITICAL => [
+                'label' => __('Muy próximo', 'mantenimientos'), 'color' => '#f76707', 'text' => '#fff',
+                'tile'  => '#ffb066', 'tile_text' => 'rgba(0,0,0,.72)', 'icon' => 'ti ti-alert-triangle',
+                'hint'  => sprintf(__('Faltan %d días o menos', 'mantenimientos'), $critical),
+            ],
+            self::LIGHT_WARNING  => [
+                'label' => __('Próximo', 'mantenimientos'), 'color' => '#f59f00', 'text' => '#1d273b',
+                'tile'  => '#ffd95a', 'tile_text' => 'rgba(0,0,0,.72)', 'icon' => 'ti ti-clock',
+                'hint'  => sprintf(__('Faltan %d días o menos', 'mantenimientos'), $warning),
+            ],
+            self::LIGHT_OK       => [
+                'label' => __('Al día', 'mantenimientos'), 'color' => '#2fb344', 'text' => '#fff',
+                'tile'  => '#6fd06c', 'tile_text' => 'rgba(0,0,0,.72)', 'icon' => 'ti ti-circle-check',
+                'hint'  => sprintf(__('Faltan más de %d días', 'mantenimientos'), $warning),
+            ],
+            self::LIGHT_REPAIR   => [
+                'label' => __('En correctivo', 'mantenimientos'), 'color' => '#4263eb', 'text' => '#fff',
+                'tile'  => '#6495d6', 'tile_text' => '#fff', 'icon' => 'ti ti-tool',
+                'hint'  => __('Equipo con una reparación abierta', 'mantenimientos'),
+            ],
+            self::LIGHT_NOPLAN   => [
+                'label' => __('Sin plan', 'mantenimientos'), 'color' => '#adb5bd', 'text' => '#1d273b',
+                'tile'  => '#d6d6d6', 'tile_text' => 'rgba(0,0,0,.6)', 'icon' => 'ti ti-circle-dashed',
+                'hint'  => __('Sin plan que aplique, plan inactivo o equipo excluido', 'mantenimientos'),
+            ],
         ];
     }
 

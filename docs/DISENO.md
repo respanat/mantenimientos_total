@@ -45,6 +45,10 @@ Computadores (PC y portátiles, por subtipo de inventario) y teléfonos/tablets.
 
 🟢 > 30 días · 🟡 ≤ 30 · 🟠 ≤ 7 · 🔴 vencido · 🔧 correctivo abierto · ⚪ sin plan
 
+## Estilo de tableros
+
+Todos los tableros del plugin usan `Ui::tiles()` / `Ui::lightTiles()`: mosaicos al estilo del resumen de tickets de GLPI (fondo de color completo, número grande, ícono arriba a la derecha, descripción al pasar el cursor; clic = filtrar). Aprobado 2026-11-18.
+
 ## Seguimiento y control
 
 - **Cumplimiento:** % preventivos completados de los que vencían en el periodo; % a tiempo (dentro de tolerancia); días promedio de retraso; cobertura (equipos con plan / total); vencidos hoy.

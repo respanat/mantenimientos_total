@@ -15,6 +15,7 @@ use GlpiPlugin\Mantenimientos\Item;
 use GlpiPlugin\Mantenimientos\Maintenance;
 use GlpiPlugin\Mantenimientos\Menu;
 use GlpiPlugin\Mantenimientos\Plan;
+use GlpiPlugin\Mantenimientos\Ui;
 
 // GLPI 10 necesita el bootstrap clásico; en 11 y 12 el núcleo ya está cargado.
 if (!defined('GLPI_ROOT')) {
@@ -38,21 +39,12 @@ $base   = Item::getSearchURL();
 
 echo "<div class='container-fluid'>";
 
-// Tarjetas de resumen (clic = filtrar)
-echo "<div class='row g-2 mb-3'>";
-foreach ($lights as $key => $def) {
-    $active = $filters['light'] === $key ? 'border border-2 border-dark' : '';
-    $url    = $base . '?' . http_build_query(['light' => $filters['light'] === $key ? '' : $key] + array_filter([
+// Mosaicos de resumen (clic = filtrar; clic de nuevo = quitar filtro)
+echo Ui::lightTiles($counts, function (string $key) use ($base, $filters) {
+    return $base . '?' . http_build_query(['light' => $filters['light'] === $key ? '' : $key] + array_filter([
         'itemtype' => $filters['itemtype'], 'plans_id' => $filters['plans_id'] ?: null,
     ]));
-    echo "<div class='col-6 col-md-4 col-xl-2'>";
-    echo "<a href='" . Compat::e($url) . "' class='card card-sm text-decoration-none {$active}'>";
-    echo "<div class='card-body d-flex align-items-center'>";
-    echo "<span class='rounded me-2' style='width:12px;height:36px;background:{$def['color']}'></span>";
-    echo "<div><div class='h2 mb-0'>" . (int) $counts[$key] . "</div><div class='text-muted'>" . Compat::e($def['label']) . "</div></div>";
-    echo "</div></a></div>";
-}
-echo "</div>";
+}, $filters['light']);
 
 // Filtros
 echo "<form method='get' action='" . Compat::e($base) . "' class='card mb-3'><div class='card-body row g-2 align-items-end'>";
@@ -77,7 +69,7 @@ echo "</div></form>";
 
 if (Session::haveRight(Plan::$rightname, UPDATE)) {
     echo "<form method='post' action='" . Compat::e(Item::getFormURL()) . "' class='mb-3 d-flex align-items-center'>";
-    echo "<button type='submit' name='sync' value='1' class='btn btn-outline-primary'><i class='ti ti-refresh me-1'></i>"
+    echo "<button type='submit' name='sync' value='1' class='btn btn-primary'><i class='ti ti-refresh me-1'></i>"
         . Compat::e(__('Sincronizar equipos con los planes', 'mantenimientos')) . "</button>";
     echo "<span class='text-muted small ms-2'>"
         . Compat::e(__('También se ejecuta solo una vez al día (Configuración > Acciones automáticas > syncItems).', 'mantenimientos'))
