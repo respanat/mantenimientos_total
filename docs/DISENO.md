@@ -50,6 +50,12 @@ Computadores (PC y portátiles, por subtipo de inventario) y teléfonos/tablets.
 
 Todos los tableros del plugin usan `Ui::tiles()` / `Ui::lightTiles()`: mosaicos al estilo del resumen de tickets de GLPI (fondo de color completo, número grande, ícono arriba a la derecha, descripción al pasar el cursor; clic = filtrar). Aprobado 2026-11-18.
 
+## Tendencias (tablero)
+
+- **Estado del parque:** foto diaria (`glpi_plugin_mantenimientos_snapshots`) de los conteos del semáforo de todo el parque, tomada por la tarea `syncItems`, la sincronización manual o la primera visita del día al tablero.
+- **Actividad de preventivos:** iniciados, completados y cancelados, reconstruido desde los registros.
+- Gráfica de líneas propia (`Ui::lineChart`, SVG + JS, sin librerías): leyenda para activar/desactivar series, valores al pasar el cursor; periodos 30 días (por día), 90 días (por semana), 12 meses (por mes).
+
 ## Seguimiento y control
 
 - **Cumplimiento:** % preventivos completados de los que vencían en el periodo; % a tiempo (dentro de tolerancia); días promedio de retraso; cobertura (equipos con plan / total); vencidos hoy.

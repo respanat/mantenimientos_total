@@ -315,9 +315,10 @@ abstract class ItemBase extends CommonDBTM
      * activas del usuario. Ordenados del más atrasado al más holgado.
      *
      * @param array{itemtype?: string, light?: string, plans_id?: int} $filters
+     * @param bool $all_entities true = sin restringir por las entidades de la sesión (tarea programada)
      * @return list<array<string, mixed>>
      */
-    public static function getRows(array $filters = []): array
+    public static function getRows(array $filters = [], bool $all_entities = false): array
     {
         /** @var \DBmysql $DB */
         global $DB;
@@ -336,7 +337,7 @@ abstract class ItemBase extends CommonDBTM
                 'i.itemtype'    => $itemtype,
                 'a.is_deleted'  => 0,
                 'a.is_template' => 0,
-            ] + $dbu->getEntitiesRestrictCriteria('a', '', '', true);
+            ] + ($all_entities ? [] : $dbu->getEntitiesRestrictCriteria('a', '', '', true));
             if (!empty($filters['plans_id'])) {
                 $where['i.plugin_mantenimientos_plans_id'] = (int) $filters['plans_id'];
             }
@@ -385,14 +386,14 @@ abstract class ItemBase extends CommonDBTM
      *
      * @return array<string, int>
      */
-    public static function getCounts(): array
+    public static function getCounts(bool $all_entities = false): array
     {
         /** @var \DBmysql $DB */
         global $DB;
 
         $counts = array_fill_keys(array_keys(self::getLights()), 0);
         $with_record = 0;
-        foreach (self::getRows() as $row) {
+        foreach (self::getRows([], $all_entities) as $row) {
             $counts[$row['light']]++;
             $with_record++;
         }
@@ -405,12 +406,76 @@ abstract class ItemBase extends CommonDBTM
                 'COUNT' => 'cpt',
                 'FROM'  => $itemtype::getTable(),
                 'WHERE' => ['is_deleted' => 0, 'is_template' => 0]
-                    + $dbu->getEntitiesRestrictCriteria($itemtype::getTable(), '', '', true),
+                    + ($all_entities ? [] : $dbu->getEntitiesRestrictCriteria($itemtype::getTable(), '', '', true)),
             ])->current()['cpt'];
         }
         $counts[self::LIGHT_NOPLAN] += max(0, $total - $with_record);
 
         return $counts;
+    }
+
+    // ---------------------------------------------------------------------
+    // Foto diaria del semáforo (para la gráfica de tendencia)
+    // ---------------------------------------------------------------------
+
+    public const SNAPSHOT_TABLE = 'glpi_plugin_mantenimientos_snapshots';
+
+    /**
+     * Guarda (o actualiza) la foto del día con los conteos de todo el parque.
+     */
+    public static function recordSnapshot(): void
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+        if (!$DB->tableExists(self::SNAPSHOT_TABLE)) {
+            return;
+        }
+        $counts = self::getCounts(true);
+        $today  = date('Y-m-d');
+        $data   = [];
+        foreach (array_keys(self::getLights()) as $key) {
+            $data[$key] = (int) ($counts[$key] ?? 0);
+        }
+        $data['date_mod'] = date('Y-m-d H:i:s');
+
+        $exists = $DB->request(['SELECT' => ['id'], 'FROM' => self::SNAPSHOT_TABLE, 'WHERE' => ['snapshot_date' => $today]])->current();
+        if ($exists) {
+            $DB->update(self::SNAPSHOT_TABLE, $data, ['id' => $exists['id']]);
+        } else {
+            $DB->insert(self::SNAPSHOT_TABLE, ['snapshot_date' => $today] + $data);
+        }
+    }
+
+    /**
+     * Garantiza que exista la foto de hoy (por si la tarea programada no ha corrido).
+     */
+    public static function ensureTodaySnapshot(): void
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+        if (
+            $DB->tableExists(self::SNAPSHOT_TABLE)
+            && countElementsInTable(self::SNAPSHOT_TABLE, ['snapshot_date' => date('Y-m-d')]) === 0
+        ) {
+            self::recordSnapshot();
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public static function getSnapshots(string $from): array
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+        if (!$DB->tableExists(self::SNAPSHOT_TABLE)) {
+            return [];
+        }
+        return iterator_to_array($DB->request([
+            'FROM'  => self::SNAPSHOT_TABLE,
+            'WHERE' => ['snapshot_date' => ['>=', $from]],
+            'ORDER' => 'snapshot_date ASC',
+        ]), false);
     }
 
     // ---------------------------------------------------------------------
@@ -428,6 +493,7 @@ abstract class ItemBase extends CommonDBTM
     public static function cronSyncItems($task)
     {
         $stats = self::syncAll();
+        self::recordSnapshot();
         if ($task instanceof CronTask) {
             $task->addVolume($stats['assigned'] + $stats['updated'] + $stats['unassigned']);
             $task->log(sprintf(

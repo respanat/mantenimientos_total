@@ -22,6 +22,7 @@ Session::checkRight(Plan::$rightname, UPDATE);
 
 if (isset($_POST['sync'])) {
     $stats = Item::syncAll();
+    Item::recordSnapshot();
     Session::addMessageAfterRedirect(sprintf(
         __('Sincronización lista: %1$d equipos revisados, %2$d asignados, %3$d actualizados, %4$d quedaron sin plan.', 'mantenimientos'),
         $stats['total'],

@@ -184,6 +184,21 @@ function plugin_mantenimientos_schema(string $sign): array
             KEY `date` (`date`)
         ",
 
+        // Foto diaria del semáforo (tendencia del estado del parque)
+        'glpi_plugin_mantenimientos_snapshots' => "
+            `id` int {$sign} NOT NULL AUTO_INCREMENT,
+            `snapshot_date` date NOT NULL,
+            `overdue` int NOT NULL DEFAULT '0',
+            `critical` int NOT NULL DEFAULT '0',
+            `warning` int NOT NULL DEFAULT '0',
+            `ok` int NOT NULL DEFAULT '0',
+            `repair` int NOT NULL DEFAULT '0',
+            `noplan` int NOT NULL DEFAULT '0',
+            `date_mod` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `snapshot_date` (`snapshot_date`)
+        ",
+
         // Configuración clave/valor
         'glpi_plugin_mantenimientos_configs' => "
             `id` int {$sign} NOT NULL AUTO_INCREMENT,
