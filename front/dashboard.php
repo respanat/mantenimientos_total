@@ -26,7 +26,7 @@ if (!Menu::canView()) {
     Html::displayRightError();
 }
 
-Html::header(Menu::getMenuName(), '', 'admin', Menu::class);
+Html::header(Menu::getMenuName(), '', 'tools', Menu::class);
 
 echo "<div class='container-fluid'>";
 echo "<div class='card'>";

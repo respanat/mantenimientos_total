@@ -15,7 +15,7 @@ use CommonGLPI;
 use Session;
 
 /**
- * Entrada "Mantenimientos" en el menú Administración.
+ * Entrada "Mantenimientos" en los menús Herramientas y Activos.
  * Vistas: Tablero, Equipos (semáforo), Historial, Planes, Métricas, Configuración.
  */
 class Menu extends CommonGLPI
@@ -79,6 +79,12 @@ class Menu extends CommonGLPI
                 'title' => Item::getTypeName(Session::getPluralNumber()),
                 'page'  => Item::getSearchURL(false),
                 'icon'  => Item::getIcon(),
+            ];
+            $menu['options']['maintenance'] = [
+                'title' => __('Historial', 'mantenimientos'),
+                'page'  => Maintenance::getSearchURL(false),
+                'icon'  => 'ti ti-history',
+                'links' => ['search' => Maintenance::getSearchURL(false)],
             ];
         }
 

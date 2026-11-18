@@ -31,7 +31,7 @@ $filters = [
     'plans_id' => (int) ($_GET['plans_id'] ?? 0),
 ];
 
-Html::header(Item::getTypeName(Session::getPluralNumber()), '', 'admin', Menu::class, 'item');
+Html::header(Item::getTypeName(Session::getPluralNumber()), '', 'tools', Menu::class, 'item');
 
 $counts = Item::getCounts();
 $rows   = Item::getRows($filters);
@@ -83,18 +83,19 @@ echo "<thead><tr>";
 foreach (
     [__('Estado', 'mantenimientos'), __('Equipo', 'mantenimientos'), __('Tipo', 'mantenimientos'),
         __('Usuario asignado', 'mantenimientos'), Plan::getTypeName(1), __('Último preventivo', 'mantenimientos'),
-        __('Próximo', 'mantenimientos'), __('Días', 'mantenimientos')] as $th
+        __('Próximo', 'mantenimientos'), __('Días', 'mantenimientos'), ''] as $th
 ) {
     echo "<th>" . Compat::e($th) . "</th>";
 }
 echo "</tr></thead><tbody>";
 
 if ($rows === []) {
-    echo "<tr><td colspan='8' class='text-center text-muted p-4'>"
+    echo "<tr><td colspan='9' class='text-center text-muted p-4'>"
         . Compat::e(__('No hay equipos para mostrar. Cree un plan activo y pulse "Sincronizar equipos con los planes".', 'mantenimientos'))
         . "</td></tr>";
 }
 
+$can_register = Session::haveRight(Maintenance::$rightname, CREATE);
 foreach ($rows as $row) {
     $itemtype = $row['itemtype'];
     $days     = $row['days'];
@@ -110,7 +111,22 @@ foreach ($rows as $row) {
     echo "<td>" . Compat::e($row['last_preventive_date'] ? Html::convDate($row['last_preventive_date']) : __('Sin registro', 'mantenimientos')) . "</td>";
     echo "<td>" . Compat::e($row['next_due_date'] ? Html::convDate($row['next_due_date']) : '—') . "</td>";
     echo "<td>" . Compat::e($days_txt) . "</td>";
-    echo "</tr>";
+    echo "<td class='text-end'>";
+    if ($can_register && $row['light'] !== Item::LIGHT_NOPLAN) {
+        $open = Maintenance::findOpenPreventive($itemtype, (int) $row['items_id']);
+        if ($open !== null) {
+            echo "<a class='btn btn-sm btn-outline-primary' href='" . Compat::e(Maintenance::getFormURLWithID($open)) . "'>"
+                . "<i class='ti ti-clipboard-check me-1'></i>" . Compat::e(__('Continuar', 'mantenimientos')) . "</a>";
+        } else {
+            echo "<form method='post' action='" . Compat::e(Maintenance::getFormURL()) . "' class='d-inline'>";
+            echo "<input type='hidden' name='itemtype' value='" . Compat::e($itemtype) . "'>";
+            echo "<input type='hidden' name='items_id' value='" . (int) $row['items_id'] . "'>";
+            echo "<button type='submit' name='start_preventive' value='1' class='btn btn-sm btn-primary'>"
+                . "<i class='ti ti-clipboard-plus me-1'></i>" . Compat::e(__('Registrar', 'mantenimientos')) . "</button>";
+            Html::closeForm();
+        }
+    }
+    echo "</td></tr>";
 }
 echo "</tbody></table></div></div></div>";
 

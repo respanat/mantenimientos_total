@@ -47,7 +47,7 @@ if (isset($_POST['load_defaults'])) {
     $task->delete($_POST, true);
     Html::redirect(Plan::getFormURLWithID($plans_id));
 } else {
-    Html::header(PlanTask::getTypeName(1), '', 'admin', Menu::class, 'plan');
+    Html::header(PlanTask::getTypeName(1), '', 'tools', Menu::class, 'plan');
     $task->display(['id' => (int) ($_GET['id'] ?? 0)]);
     Html::footer();
 }

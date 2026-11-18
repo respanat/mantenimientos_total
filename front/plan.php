@@ -20,6 +20,6 @@ if (!defined('GLPI_ROOT')) {
 
 Session::checkRight(Plan::$rightname, READ);
 
-Html::header(Plan::getTypeName(Session::getPluralNumber()), '', 'admin', Menu::class, 'plan');
+Html::header(Plan::getTypeName(Session::getPluralNumber()), '', 'tools', Menu::class, 'plan');
 Search::show(Plan::class);
 Html::footer();

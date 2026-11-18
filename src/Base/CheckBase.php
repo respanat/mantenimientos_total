@@ -35,8 +35,8 @@ abstract class CheckBase extends CommonDBChild
     {
         return [
             self::RESULT_PENDING  => __('Pendiente', 'mantenimientos'),
-            self::RESULT_DONE     => __('Hecho', 'mantenimientos'),
-            self::RESULT_NOT_DONE => __('No hecho', 'mantenimientos'),
+            self::RESULT_DONE     => __('Realizado', 'mantenimientos'),
+            self::RESULT_NOT_DONE => __('No realizado', 'mantenimientos'),
             self::RESULT_NA       => __('No aplica', 'mantenimientos'),
         ];
     }

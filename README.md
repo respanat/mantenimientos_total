@@ -52,8 +52,10 @@ Al instalar, los perfiles con permiso de actualizar la configuración (Super-Adm
 | 1 | Estructura, tablas, permisos, menú | ✅ v0.1.0 |
 | 1 | Compatibilidad GLPI 10 → 12 en un solo código | ✅ v0.2.0 |
 | 1 | Planes y checklist (pantallas) | ✅ v0.3.0 – v0.5.0 |
-| 1 | Registro de preventivos y correctivos, costos | ⏳ |
-| 1 | Tablero, semáforo, historial, métricas | ⏳ |
+| 1 | Registro de preventivos con checklist tipo formato en papel | ✅ v0.7.0 |
+| 1 | Correctivos y costos | ⏳ |
+| 1 | Equipos con semáforo, tablero e historial | ✅ v0.6.0 – v0.7.0 |
+| 1 | Métricas de cumplimiento, seguimiento y control | ⏳ |
 | 2 | Aviso al usuario asignado al iniciar sesión en GLPI / correo | 🔜 |
 | 3 | Aviso al iniciar sesión en Windows (tareas de despliegue) | 🔜 |
 

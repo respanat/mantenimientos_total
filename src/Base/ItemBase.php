@@ -505,6 +505,9 @@ abstract class ItemBase extends CommonDBTM
         }
         echo "</dl></div></div>";
 
+        // Registrar / continuar preventivo + historial del equipo
+        Maintenance::showHistoryForAsset($asset);
+
         if (!$found || !Session::haveRight(Plan::$rightname, UPDATE)) {
             return;
         }

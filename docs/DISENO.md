@@ -35,6 +35,7 @@ Computadores (PC y portátiles, por subtipo de inventario) y teléfonos/tablets.
 - Al completar: próxima fecha = fecha real de ejecución + frecuencia.
 - No se completa con tareas obligatorias pendientes.
 - Una falla encontrada abre un correctivo vinculado.
+- Checklist tipo formato en papel (aprobado 2026-11-18): cada tarea se marca Realizado / No realizado / No aplica; No realizado y No aplica exigen justificación; todas deben quedar marcadas; una obligatoria en No realizado impide completar (queda abierto o se cancela con motivo). Se puede guardar avance.
 
 **Correctivo:** Reportado → Diagnóstico → En reparación → Reparado.
 - Externo: Diagnóstico → Enviado a proveedor → En proveedor → Devuelto → Reparado.

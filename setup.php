@@ -15,7 +15,7 @@ use GlpiPlugin\Mantenimientos\Item;
 use GlpiPlugin\Mantenimientos\Menu;
 use GlpiPlugin\Mantenimientos\Profile;
 
-define('PLUGIN_MANTENIMIENTOS_VERSION', '0.6.0');
+define('PLUGIN_MANTENIMIENTOS_VERSION', '0.7.0');
 // Compatible con GLPI 10, 11 y 12 (ver src/Compat.php).
 // 'max' es exclusivo: subirlo a 13.99.99 cuando GLPI 13 exista y se haya probado.
 define('PLUGIN_MANTENIMIENTOS_MIN_GLPI', '10.0.0');
@@ -41,9 +41,12 @@ function plugin_init_mantenimientos(): void
     // Pestaña "Mantenimientos" en la ficha de computadores y teléfonos
     Plugin::registerClass(Item::class, ['addtabon' => [\Computer::class, \Phone::class]]);
 
-    // Menú propio en Administración
+    // Menú propio en Herramientas y en Activos (donde trabajan los técnicos)
     if (Menu::canView()) {
-        $PLUGIN_HOOKS['menu_toadd']['mantenimientos'] = ['admin' => Menu::class];
+        $PLUGIN_HOOKS['menu_toadd']['mantenimientos'] = [
+            'tools'  => Menu::class,
+            'assets' => Menu::class,
+        ];
     }
 }
 
