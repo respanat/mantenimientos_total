@@ -51,13 +51,29 @@ class Menu extends CommonGLPI
             return false;
         }
 
-        // Las sub-vistas (Planes, Equipos, Historial, Métricas, Configuración)
-        // se agregan en 'options' a medida que se implementan sus pantallas.
-        return [
+        $menu = [
             'title'   => self::getMenuName(),
             'page'    => self::WEB_ROOT . '/front/dashboard.php',
             'icon'    => self::getIcon(),
             'options' => [],
         ];
+
+        // Sub-vistas: se agregan a medida que se implementan sus pantallas
+        // (Equipos, Historial, Métricas y Configuración vienen en próximas entregas).
+        if (Session::haveRight(Plan::$rightname, READ)) {
+            $menu['options']['plan'] = [
+                'title' => Plan::getTypeName(Session::getPluralNumber()),
+                'page'  => Plan::getSearchURL(false),
+                'icon'  => Plan::getIcon(),
+                'links' => [
+                    'search' => Plan::getSearchURL(false),
+                ],
+            ];
+            if (Session::haveRight(Plan::$rightname, CREATE)) {
+                $menu['options']['plan']['links']['add'] = Plan::getFormURL(false);
+            }
+        }
+
+        return $menu;
     }
 }

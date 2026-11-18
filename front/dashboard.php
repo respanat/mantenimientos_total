@@ -12,6 +12,7 @@
 
 use GlpiPlugin\Mantenimientos\Compat;
 use GlpiPlugin\Mantenimientos\Menu;
+use GlpiPlugin\Mantenimientos\Plan;
 
 // GLPI 10 necesita el bootstrap clásico; en 11 y 12 el núcleo ya está cargado.
 if (!defined('GLPI_ROOT')) {
@@ -29,7 +30,11 @@ echo "<div class='card'>";
 echo "<div class='card-header'><h3 class='card-title'><i class='" . Compat::e(Menu::getIcon()) . " me-2'></i>"
     . Compat::e(Menu::getMenuName()) . "</h3></div>";
 echo "<div class='card-body'>";
-echo "<p>" . Compat::e(__('Plugin instalado. Las vistas de Tablero, Equipos, Historial, Planes y Métricas se habilitan en las próximas entregas.', 'mantenimientos')) . "</p>";
+echo "<p>" . Compat::e(__('El tablero con semáforo e indicadores llega en una próxima entrega. Por ahora puede configurar los planes de mantenimiento.', 'mantenimientos')) . "</p>";
+if (Session::haveRight(Plan::$rightname, READ)) {
+    echo "<a class='btn btn-primary' href='" . Compat::e(Plan::getSearchURL()) . "'><i class='" . Compat::e(Plan::getIcon()) . " me-1'></i>"
+        . Compat::e(Plan::getTypeName(Session::getPluralNumber())) . "</a>";
+}
 echo "</div></div></div>";
 
 Html::footer();

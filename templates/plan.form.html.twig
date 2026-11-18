@@ -1,0 +1,74 @@
+{#
+ # Mantenimientos - Plugin GLPI
+ # Formulario de plan. Usa solo macros/componentes presentes en GLPI 10, 11 y 12:
+ # components/form/header (abre <form>), fields_macros, buttons (cierra <form> y CSRF).
+ # @license GPL-3.0-or-later
+ #}
+{% import 'components/form/fields_macros.html.twig' as fields %}
+{% set params = params ?? {} %}
+
+<div class="asset">
+   {{ include('components/form/header.html.twig', {'in_twig': true}) }}
+
+   <div class="card-body d-flex flex-wrap">
+      <div class="col-12 flex-column">
+         <div class="d-flex flex-row flex-wrap flex-xl-nowrap">
+            <div class="row flex-row align-items-start flex-grow-1">
+               <div class="row flex-row">
+
+                  {{ fields.textField('name', item.fields['name'], __('Name'), {
+                     'required': true,
+                  }) }}
+
+                  {{ fields.dropdownYesNo('is_active', item.fields['is_active'], __('Active')) }}
+
+                  {{ fields.dropdownArrayField('itemtype', item.fields['itemtype'], itemtypes, __('Tipo de equipo', 'mantenimientos'), {
+                     'display_emptychoice': true,
+                     'required': true,
+                  }) }}
+
+                  {% if type_class %}
+                     {{ fields.dropdownField(type_class, 'types_id', item.fields['types_id'], __('Subtipo', 'mantenimientos'), {
+                        'emptylabel': __('Todos los subtipos', 'mantenimientos'),
+                        'comments': false,
+                        'helper': __('Ej.: Portátil o Escritorio para computadores; Tablet o Celular para teléfonos.', 'mantenimientos'),
+                     }) }}
+                  {% else %}
+                     {{ fields.htmlField('', '<span class="text-muted">' ~ __('Guarde el plan para elegir el subtipo (ej. Portátil, Tablet).', 'mantenimientos')|e ~ '</span>', __('Subtipo', 'mantenimientos')) }}
+                  {% endif %}
+
+                  {{ fields.numberField('frequency_days', item.fields['frequency_days'], __('Frecuencia (días)', 'mantenimientos'), {
+                     'min': 1,
+                     'max': 3650,
+                     'step': 1,
+                     'helper': __('Cada cuántos días se debe hacer el preventivo. Ej.: 180 = semestral.', 'mantenimientos'),
+                  }) }}
+
+                  {{ fields.numberField('tolerance_days', item.fields['tolerance_days'], __('Tolerancia (días)', 'mantenimientos'), {
+                     'min': 0,
+                     'max': 365,
+                     'step': 1,
+                     'helper': __('Días de gracia después de la fecha para considerarlo hecho a tiempo.', 'mantenimientos'),
+                  }) }}
+
+                  {{ fields.dropdownArrayField('service_mode', item.fields['service_mode'], service_modes, __('Servicio', 'mantenimientos')) }}
+
+                  {{ fields.dropdownField('Supplier', 'suppliers_id', item.fields['suppliers_id'], __('Proveedor por defecto', 'mantenimientos'), {
+                     'entity': item.fields['entities_id'],
+                     'helper': __('Se propone al registrar mantenimientos externos.', 'mantenimientos'),
+                  }) }}
+
+                  {{ fields.textareaField('comment', item.fields['comment'], __('Comments')) }}
+
+               </div>
+            </div>
+         </div>
+      </div>
+   </div>
+
+   {{ include('components/form/buttons.html.twig') }}
+
+   <div class="card-footer mx-n2 mb-n2 mt-4">
+      {{ include('components/form/dates.html.twig') }}
+   </div>
+</div>

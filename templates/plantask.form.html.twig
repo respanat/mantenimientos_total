@@ -1,0 +1,29 @@
+{#
+ # Mantenimientos - Plugin GLPI
+ # Formulario de una tarea del checklist de un plan.
+ # @license GPL-3.0-or-later
+ #}
+{% import 'components/form/fields_macros.html.twig' as fields %}
+{% set params = params ?? {} %}
+
+<div class="asset">
+   {{ include('components/form/header.html.twig', {'in_twig': true}) }}
+
+   <div class="card-body d-flex flex-wrap">
+      <div class="col-12 flex-column">
+         <div class="row flex-row">
+            <input type="hidden" name="plugin_mantenimientos_plans_id" value="{{ item.fields['plugin_mantenimientos_plans_id'] }}" />
+
+            {{ fields.textField('name', item.fields['name'], __('Name'), {'required': true}) }}
+            {{ fields.numberField('rank', item.fields['rank'], __('Orden', 'mantenimientos'), {'min': 0, 'step': 1}) }}
+            {{ fields.dropdownYesNo('is_mandatory', item.fields['is_mandatory'], __('Obligatoria', 'mantenimientos'), {
+               'helper': __('Un preventivo no se puede completar si una tarea obligatoria queda pendiente.', 'mantenimientos'),
+            }) }}
+            {{ fields.dropdownYesNo('is_active', item.fields['is_active'], __('Active')) }}
+            {{ fields.textareaField('description', item.fields['description'], __('Description')) }}
+         </div>
+      </div>
+   </div>
+
+   {{ include('components/form/buttons.html.twig') }}
+</div>
