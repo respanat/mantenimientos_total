@@ -39,7 +39,7 @@ function plugin_mantenimientos_schema(string $sign): array
             `is_recursive` tinyint NOT NULL DEFAULT '0',
             `name` varchar(255) DEFAULT NULL,
             `itemtype` varchar(100) NOT NULL DEFAULT '' COMMENT 'Computer, Printer, Phone...',
-            `types_id` {$fk} COMMENT 'Tipo dentro del itemtype (ej. ComputerType: portátil). 0 = todos',
+            `types_ids` text COMMENT 'JSON con los subtipos (ej. ComputerType Notebook, Convertible). Vacío = todos',
             `frequency_days` int NOT NULL DEFAULT '180',
             `tolerance_days` int NOT NULL DEFAULT '15',
             `service_mode` tinyint NOT NULL DEFAULT '1' COMMENT '1 interno, 2 externo',
@@ -50,7 +50,7 @@ function plugin_mantenimientos_schema(string $sign): array
             `date_mod` timestamp NULL DEFAULT NULL,
             PRIMARY KEY (`id`),
             KEY `entities_id` (`entities_id`),
-            KEY `itemtype_types` (`itemtype`, `types_id`),
+            KEY `itemtype` (`itemtype`),
             KEY `suppliers_id` (`suppliers_id`),
             KEY `is_active` (`is_active`)
         ",
@@ -211,6 +211,32 @@ function plugin_mantenimientos_default_config(): array
     ];
 }
 
+/**
+ * Cambios de esquema para instalaciones existentes.
+ */
+function plugin_mantenimientos_upgrade_schema(Migration $migration): void
+{
+    /** @var \DBmysql $DB */
+    global $DB;
+
+    // 0.4.0: un plan admite varios subtipos (types_id -> types_ids JSON)
+    $plans = 'glpi_plugin_mantenimientos_plans';
+    if ($DB->tableExists($plans) && $DB->fieldExists($plans, 'types_id')) {
+        if (!$DB->fieldExists($plans, 'types_ids')) {
+            $migration->addField($plans, 'types_ids', 'text', ['after' => 'itemtype']);
+            $migration->migrationOneTable($plans);
+        }
+        foreach ($DB->request(['SELECT' => ['id', 'types_id'], 'FROM' => $plans]) as $row) {
+            $ids = (int) $row['types_id'] > 0 ? [(int) $row['types_id']] : [];
+            $DB->update($plans, ['types_ids' => json_encode($ids)], ['id' => $row['id']]);
+        }
+        $migration->dropKey($plans, 'itemtype_types');
+        $migration->dropField($plans, 'types_id');
+        $migration->addKey($plans, 'itemtype');
+        $migration->migrationOneTable($plans);
+    }
+}
+
 function plugin_mantenimientos_install(): bool
 {
     /** @var \DBmysql $DB */
@@ -230,6 +256,9 @@ function plugin_mantenimientos_install(): bool
             );
         }
     }
+
+    // 1b. Actualizaciones de esquema desde versiones anteriores
+    plugin_mantenimientos_upgrade_schema($migration);
 
     // 2. Configuración por defecto (sin sobrescribir valores existentes)
     foreach (plugin_mantenimientos_default_config() as $name => $value) {

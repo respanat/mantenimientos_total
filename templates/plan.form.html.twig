@@ -28,13 +28,17 @@
                   }) }}
 
                   {% if type_class %}
-                     {{ fields.dropdownField(type_class, 'types_id', item.fields['types_id'], __('Subtipo', 'mantenimientos'), {
-                        'emptylabel': __('Todos los subtipos', 'mantenimientos'),
+                     <input type="hidden" name="_types_ids_sent" value="1" />
+                     {{ fields.dropdownField(type_class, 'types_ids[]', types_ids, __('Subtipos', 'mantenimientos'), {
+                        'multiple': true,
+                        'values': types_ids,
+                        'display_emptychoice': false,
                         'comments': false,
-                        'helper': __('Ej.: Portátil o Escritorio para computadores; Tablet o Celular para teléfonos.', 'mantenimientos'),
+                        'addicon': false,
+                        'helper': __('Vacío = todos. Ej.: para portátiles elija Notebook, Convertible y Laptop.', 'mantenimientos'),
                      }) }}
                   {% else %}
-                     {{ fields.htmlField('', '<span class="text-muted">' ~ __('Guarde el plan para elegir el subtipo (ej. Portátil, Tablet).', 'mantenimientos')|e ~ '</span>', __('Subtipo', 'mantenimientos')) }}
+                     {{ fields.htmlField('', '<span class="text-muted">' ~ __('Guarde el plan para elegir los subtipos (ej. Notebook, Convertible).', 'mantenimientos')|e ~ '</span>', __('Subtipos', 'mantenimientos')) }}
                   {% endif %}
 
                   {{ fields.numberField('frequency_days', item.fields['frequency_days'], __('Frecuencia (días)', 'mantenimientos'), {

@@ -91,10 +91,56 @@ abstract class PlanBase extends CommonDBTM
             'params'        => $options,
             'itemtypes'     => self::getItemtypeChoices(),
             'type_class'    => $type_class,
+            'types_ids'     => $this->getTypesIds(),
             'service_modes' => self::getServiceModes(),
         ]);
 
         return true;
+    }
+
+    // ---------------------------------------------------------------------
+    // Subtipos (varios por plan; vacío = todos)
+    // ---------------------------------------------------------------------
+
+    /**
+     * Subtipos del plan. Ej.: un plan "Portátiles" incluye Notebook,
+     * Convertible y Laptop, tal como los crea el inventario de GLPI.
+     *
+     * @return int[]
+     */
+    public function getTypesIds(): array
+    {
+        return self::decodeTypesIds($this->fields['types_ids'] ?? null);
+    }
+
+    /**
+     * @return int[]
+     */
+    public static function decodeTypesIds(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            $ids = $raw;
+        } else {
+            $ids = json_decode((string) $raw, true);
+            if (!is_array($ids)) {
+                return [];
+            }
+        }
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), fn ($id) => $id > 0)));
+        sort($ids);
+        return $ids;
+    }
+
+    /**
+     * ¿El plan aplica a un equipo de este tipo y subtipo?
+     */
+    public function appliesTo(string $itemtype, int $types_id): bool
+    {
+        if (($this->fields['itemtype'] ?? '') !== $itemtype) {
+            return false;
+        }
+        $ids = $this->getTypesIds();
+        return $ids === [] || in_array($types_id, $ids, true);
     }
 
     // ---------------------------------------------------------------------
@@ -108,18 +154,26 @@ abstract class PlanBase extends CommonDBTM
 
     public function prepareInputForUpdate($input)
     {
-        // Si cambia el tipo de equipo, el subtipo anterior deja de tener sentido
+        // Si cambia el tipo de equipo, los subtipos anteriores dejan de tener sentido
         if (
             isset($input['itemtype'], $this->fields['itemtype'])
             && $input['itemtype'] !== $this->fields['itemtype']
         ) {
-            $input['types_id'] = 0;
+            $input['types_ids'] = [];
+            unset($input['_types_ids_sent']);
         }
         return $this->validateInput($input);
     }
 
     private function validateInput(array $input): array|false
     {
+        // Subtipos: el formulario envía types_ids[]; si se quitan todos, el navegador
+        // no envía nada, por eso el formulario incluye _types_ids_sent.
+        if (array_key_exists('types_ids', $input) || isset($input['_types_ids_sent'])) {
+            $input['types_ids'] = json_encode(self::decodeTypesIds($input['types_ids'] ?? []));
+        }
+        unset($input['_types_ids_sent']);
+
         if (array_key_exists('itemtype', $input) && !array_key_exists($input['itemtype'], self::SUPPORTED_ITEMTYPES)) {
             Session::addMessageAfterRedirect(__('Seleccione un tipo de equipo válido.', 'mantenimientos'), false, ERROR);
             return false;
@@ -184,6 +238,16 @@ abstract class PlanBase extends CommonDBTM
             'datatype'      => 'itemtypename',
             'types'         => array_keys(self::SUPPORTED_ITEMTYPES),
             'massiveaction' => false,
+        ];
+        $tab[] = [
+            'id'            => '9',
+            'table'         => $this->getTable(),
+            'field'         => 'types_ids',
+            'name'          => __('Subtipos', 'mantenimientos'),
+            'datatype'      => 'specific',
+            'nosearch'      => true,
+            'massiveaction' => false,
+            'additionalfields' => ['itemtype'],
         ];
         $tab[] = [
             'id'       => '4',
@@ -265,6 +329,18 @@ abstract class PlanBase extends CommonDBTM
         }
         if ($field === 'service_mode') {
             return Compat::e(self::getServiceModes()[(int) $values[$field]] ?? '');
+        }
+        if ($field === 'types_ids') {
+            $type_class = self::SUPPORTED_ITEMTYPES[$values['itemtype'] ?? ''] ?? null;
+            $ids        = self::decodeTypesIds($values[$field]);
+            if ($type_class === null || $ids === []) {
+                return Compat::e(__('Todos', 'mantenimientos'));
+            }
+            $names = [];
+            foreach ($ids as $id) {
+                $names[] = \Dropdown::getDropdownName($type_class::getTable(), $id);
+            }
+            return Compat::e(implode(', ', $names), true);
         }
         return parent::getSpecificValueToDisplay($field, $values, $options);
     }
