@@ -121,7 +121,13 @@ abstract class PlanBase extends CommonDBTM
     public static function decodeTypesIds(mixed $raw): array
     {
         if (is_array($raw)) {
-            $ids = $raw;
+            // GLPI 11.0.13+ agrega "[]" solo a los selectores múltiples, así que el
+            // formulario puede llegar como types_ids[][] (lista de listas). Se aplana
+            // para aceptar ambos formatos (antes y después de ese cambio de GLPI).
+            $ids = [];
+            array_walk_recursive($raw, function ($value) use (&$ids) {
+                $ids[] = $value;
+            });
         } else {
             $ids = json_decode((string) $raw, true);
             if (!is_array($ids)) {
