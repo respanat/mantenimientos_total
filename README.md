@@ -72,7 +72,7 @@ Reglas: cada cambio de color (🟡 → 🟠 → 🔴) avisa de nuevo; sin respue
 
 El equipo se identifica por número de serie (o por nombre si el serial es genérico). `front/notify.php` no usa sesión de GLPI: lo protege el token (en GLPI 11+ se declara en el firewall como público y sin estado). El token va en `%ProgramData%\MantenimientosAvisos\config.json`, legible por los usuarios del equipo; con él solo se pueden consultar y responder avisos. Si se filtra, se regenera y se vuelve a desplegar.
 
-Archivos del cliente en `tools/windows/`. Prueba en un equipo: `wscript "%ProgramData%\MantenimientosAvisos\ejecutar-oculto.vbs" -Prueba`. Registro local: `%LOCALAPPDATA%\MantenimientosAvisos\avisos.log`.
+Archivos del cliente en `tools/windows/`. Prueba en un equipo: `wscript "%ProgramData%\MantenimientosAvisos\ejecutar-oculto.vbs" -Prueba` (CMD) o `wscript "$env:ProgramData\MantenimientosAvisos\ejecutar-oculto.vbs" -Prueba` (PowerShell). Registro local: `%LOCALAPPDATA%\MantenimientosAvisos\avisos.log`.
 
 ## Compatibilidad
 

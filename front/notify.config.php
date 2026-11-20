@@ -171,7 +171,8 @@ if ($can_update) {
     echo "<li>" . $t('Descargue el instalador (ya trae la dirección, el token y los archivos).') . "</li>";
     echo "<li>" . $t('En GLPI Inventory cree un paquete de despliegue: archivo = el instalador; acción "Ejecutar comando":') . "<br><code>powershell.exe -NoProfile -ExecutionPolicy Bypass -File Instalar-AvisosMantenimiento.ps1</code></li>";
     echo "<li>" . $t('Asigne el paquete a los equipos con una tarea de despliegue. También se puede ejecutar a mano como administrador.') . "</li>";
-    echo "<li>" . $t('Prueba en un equipo, con el usuario normal:') . "<br><code>wscript \"%ProgramData%\\MantenimientosAvisos\\ejecutar-oculto.vbs\" -Prueba</code></li>";
+    echo "<li>" . $t('Prueba en un equipo, con el usuario normal (CMD):') . "<br><code>wscript \"%ProgramData%\\MantenimientosAvisos\\ejecutar-oculto.vbs\" -Prueba</code><br>"
+        . $t('En PowerShell:') . "<br><code>wscript \"\$env:ProgramData\\MantenimientosAvisos\\ejecutar-oculto.vbs\" -Prueba</code></li>";
     echo "</ol>";
     echo "<p class='text-muted small'>" . $t('Para quitarlo: el mismo instalador con -Desinstalar.') . "</p>";
 

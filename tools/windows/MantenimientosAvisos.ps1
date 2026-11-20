@@ -31,6 +31,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Solo módulos del sistema: así PowerShell no recorre Documentos\WindowsPowerShell\Modules,
+# que suele estar en OneDrive y obligaría a descargar archivos (p. ej. PnP.PowerShell).
+$env:PSModulePath = (@(
+    (Join-Path $PSHOME 'Modules'),
+    (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules')
+) | Select-Object -Unique) -join ';'
 $Base       = Join-Path $env:ProgramData 'MantenimientosAvisos'
 $ConfigFile = Join-Path $Base 'config.json'
 $Launcher   = Join-Path $Base 'ejecutar-oculto.vbs'
