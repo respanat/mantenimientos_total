@@ -14,7 +14,7 @@
       3. Crea dos tareas programadas para el grupo Usuarios (corren en la sesión
          de quien inicie sesión, sin permisos de administrador):
            - "Mantenimientos - Avisos al iniciar sesión" (1 minuto después del inicio)
-           - "Mantenimientos - Avisos" (repite cada N minutos mientras haya sesión)
+           - "Mantenimientos - Avisos" (cada N minutos desde la instalación y tras cada inicio de sesión)
 
     La versión que se descarga desde GLPI (Mantenimientos > Avisos en Windows)
     ya trae la URL, el token y los archivos incluidos. Esta plantilla del
@@ -156,9 +156,12 @@ Register-ScheduledTask -TaskName $TaskLogon -TaskPath $TaskPath -Force `
 $repeatTrigger = New-ScheduledTaskTrigger -AtLogOn
 $repeatTrigger.Delay = 'PT10M'
 $repeatTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes $interval)).Repetition
+# Además, desde ya (2 minutos después de instalar) y cada N minutos: así no hay que
+# esperar a que el usuario cierre sesión y vuelva a entrar para que empiece a consultar.
+$clockTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes $interval)
 Register-ScheduledTask -TaskName $TaskRepeat -TaskPath $TaskPath -Force `
     -Action (New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('"{0}"' -f $launcher)) `
-    -Trigger $repeatTrigger -Principal $userPrincipal -Settings $settings `
+    -Trigger @($repeatTrigger, $clockTrigger) -Principal $userPrincipal -Settings $settings `
     -Description "Plugin Mantenimientos de GLPI: consulta avisos cada $interval minutos." | Out-Null
 
 # Comprobar que GLPI responde con este token
