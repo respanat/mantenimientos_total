@@ -445,6 +445,99 @@ abstract class NoticeBase extends CommonDBTM
     }
 
     /**
+     * Computador por id, con los mismos campos que findComputer().
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function getComputerById(int $id): ?array
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+
+        $row = $DB->request([
+            'SELECT' => ['id', 'name', 'serial', 'users_id', 'entities_id'],
+            'FROM'   => \Computer::getTable(),
+            'WHERE'  => ['id' => $id, 'is_deleted' => 0, 'is_template' => 0],
+        ])->current();
+        return $row ?: null;
+    }
+
+    /**
+     * Seriales de varios computadores (id => serial).
+     *
+     * @param list<int> $ids
+     * @return array<int, string>
+     */
+    public static function getSerials(array $ids): array
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+
+        $out = [];
+        if ($ids === []) {
+            return $out;
+        }
+        foreach ($DB->request(['SELECT' => ['id', 'serial'], 'FROM' => \Computer::getTable(), 'WHERE' => ['id' => $ids]]) as $row) {
+            $out[(int) $row['id']] = (string) $row['serial'];
+        }
+        return $out;
+    }
+
+    /**
+     * Último aviso registrado de cada computador (items_id => fila).
+     *
+     * @param list<int> $ids
+     * @return array<int, array<string, mixed>>
+     */
+    public static function getLastByComputer(array $ids): array
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+
+        $out = [];
+        if ($ids === []) {
+            return $out;
+        }
+        foreach (
+            $DB->request([
+                'FROM'  => Notice::getTable(),
+                'WHERE' => ['itemtype' => \Computer::class, 'items_id' => $ids],
+                'ORDER' => ['date_last_shown ASC'],
+            ]) as $row
+        ) {
+            $out[(int) $row['items_id']] = $row; // queda el más reciente
+        }
+        return $out;
+    }
+
+    /**
+     * Etiqueta con la respuesta del usuario a un aviso registrado.
+     *
+     * @param array<string, mixed> $row
+     */
+    public static function responseBadge(array $row): string
+    {
+        $e   = [\GlpiPlugin\Mantenimientos\Compat::class, 'e'];
+        $now = date('Y-m-d H:i:s');
+        if ((int) $row['ack_action'] === self::ACK_DONE) {
+            $html = "<span class='badge bg-green-lt'>" . $e(__('Entendido', 'mantenimientos')) . "</span> "
+                . $e(\Html::convDateTime($row['date_ack']));
+        } elseif (!empty($row['snooze_until']) && $row['snooze_until'] > $now) {
+            $html = "<span class='badge bg-yellow-lt'>" . $e(__('Pospuesto', 'mantenimientos')) . "</span> "
+                . $e(sprintf(__('hasta %s', 'mantenimientos'), \Html::convDateTime($row['snooze_until'])));
+        } else {
+            $html = "<span class='badge bg-secondary-lt'>" . $e(__('Sin respuesta', 'mantenimientos')) . "</span>";
+        }
+        if ((int) $row['snooze_count'] > 0) {
+            $html .= " <span class='text-muted small'>" . $e(sprintf(
+                _n('(pospuesto %d vez)', '(pospuesto %d veces)', (int) $row['snooze_count'], 'mantenimientos'),
+                (int) $row['snooze_count']
+            )) . "</span>";
+        }
+        return $html;
+    }
+
+    /**
      * Últimos avisos mostrados, para la pantalla de configuración.
      *
      * @return list<array<string, mixed>>

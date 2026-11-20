@@ -13,6 +13,7 @@
 
 use GlpiPlugin\Mantenimientos\Compat;
 use GlpiPlugin\Mantenimientos\Config;
+use GlpiPlugin\Mantenimientos\Item;
 use GlpiPlugin\Mantenimientos\Menu;
 use GlpiPlugin\Mantenimientos\Notice;
 use GlpiPlugin\Mantenimientos\Ui;
@@ -94,7 +95,7 @@ echo "<div class='container-fluid'>";
 
 // Resumen de los últimos 30 días
 $sum    = Notice::getSummary(30);
-$lights = GlpiPlugin\Mantenimientos\Item::getLights();
+$lights = Item::getLights();
 echo "<h4 class='mb-2'>" . $t('Avisos de los últimos 30 días') . "</h4>";
 echo Ui::tiles([
     ['value' => $sum['computers'], 'label' => __('Equipos avisados', 'mantenimientos'), 'color' => '#6495d6', 'text' => '#fff', 'icon' => 'ti ti-device-desktop'],
@@ -188,37 +189,108 @@ if ($can_update) {
 }
 echo "</div></div></div>";
 
-// --- Vista previa ----------------------------------------------------------
-$preview_q = mb_substr(trim((string) ($_GET['preview'] ?? '')), 0, 255);
+// --- Vista previa y equipos con aviso hoy ----------------------------------
+$preview_id = (int) ($_GET['preview_id'] ?? 0);
+$preview_q  = mb_substr(trim((string) ($_GET['preview'] ?? '')), 0, 255);
+
+$computers = Item::getRows(['itemtype' => Computer::class]);
+$ids       = array_map(static fn ($r) => (int) $r['items_id'], $computers);
+$serials   = Notice::getSerials($ids);
+$last      = Notice::getLastByComputer($ids);
+$lights    = Item::getLights();
+$min_rank  = Notice::levelRank($settings['min_light']);
+
 echo "<div class='col-12'><div class='card'>";
 echo "<div class='card-header'><h3 class='card-title mb-0'><i class='ti ti-eye me-2'></i>" . $t('Vista previa por equipo') . "</h3></div>";
 echo "<div class='card-body'>";
-echo "<form method='get' action='" . Compat::e($self_url) . "' class='row g-2 align-items-end mb-3'>";
-echo "<div class='col-md-5'><label class='form-label'>" . $t('Serial o nombre del computador') . "</label>"
-    . "<input type='text' name='preview' class='form-control' value='" . Compat::e($preview_q, true) . "'></div>";
-echo "<div class='col-md-2'><button type='submit' class='btn btn-primary w-100'><i class='ti ti-search me-1'></i>" . $t('Ver avisos') . "</button></div>";
-echo "<div class='col-md-5 text-muted small'>" . $t('Muestra lo que recibiría ese equipo hoy, sin registrarlo como visto.') . "</div>";
-echo "</form>";
 
-if ($preview_q !== '') {
+// Buscador con autocompletado (datalist: igual en GLPI 10, 11 y 12)
+echo "<form method='get' action='" . Compat::e($self_url) . "' class='row g-2 align-items-end mb-3' id='mant-preview-form'>";
+echo "<div class='col-md-6'><label class='form-label'>" . $t('Computador (nombre, serial o usuario)') . "</label>"
+    . "<input type='text' name='preview' list='mant-computers' autocomplete='off' class='form-control' id='mant-preview-input' placeholder='"
+    . $t('Escriba para buscar…') . "' value='" . Compat::e($preview_q, true) . "'>";
+echo "<datalist id='mant-computers'>";
+foreach ($computers as $r) {
+    $label = implode(' · ', array_filter([
+        $serials[(int) $r['items_id']] ?? '',
+        (string) $r['user'],
+        $lights[$r['light']]['label'] ?? '',
+    ], static fn ($v) => $v !== ''));
+    echo "<option value='" . Compat::e((string) $r['asset_name'], true) . "' label='" . Compat::e($label, true) . "'></option>";
+}
+echo "</datalist></div>";
+echo "<div class='col-md-2'><button type='submit' class='btn btn-primary w-100'><i class='ti ti-search me-1'></i>" . $t('Ver avisos') . "</button></div>";
+echo "<div class='col-md-4 text-muted small'>" . $t('Muestra lo que recibiría ese equipo hoy, sin registrarlo como visto.') . "</div>";
+echo "</form>";
+echo "<script>(function () {
+    var input = document.getElementById('mant-preview-input'), list = document.getElementById('mant-computers');
+    if (!input || !list) { return; }
+    input.addEventListener('change', function () {
+        for (var i = 0; i < list.options.length; i++) {
+            if (list.options[i].value === input.value) { document.getElementById('mant-preview-form').submit(); return; }
+        }
+    });
+})();</script>";
+
+// Resultado de la vista previa
+$computer = null;
+if ($preview_id > 0) {
+    $computer = Notice::getComputerById($preview_id);
+} elseif ($preview_q !== '') {
     $computer = Notice::findComputer($preview_q, $preview_q);
-    if ($computer === null) {
-        echo "<div class='alert alert-warning mb-0'>" . $t('No se encontró un computador con ese serial o nombre.') . "</div>";
-    } else {
-        $candidates = Notice::buildCandidates($computer);
-        echo "<p class='mb-2'><a href='" . Compat::e(Computer::getFormURLWithID((int) $computer['id'])) . "'>"
-            . Compat::e((string) $computer['name'], true) . "</a></p>";
-        if ($candidates === []) {
-            echo "<div class='alert alert-success mb-0'>" . $t('Este equipo no tiene avisos hoy.') . "</div>";
-        }
-        foreach ($candidates as $c) {
-            echo "<div class='border rounded p-3 mb-2'>" . Notice::levelBadge($c['level']) . " <strong class='ms-1'>"
-                . Compat::e($c['title'], true) . "</strong><div class='mt-1'>" . Compat::e($c['message'], true) . "</div></div>";
-        }
-        if (!$settings['enabled']) {
-            echo "<div class='text-muted small'>" . $t('(Los avisos están desactivados; así se verían al activarlos.)') . "</div>";
-        }
+}
+if (($preview_id > 0 || $preview_q !== '') && $computer === null) {
+    echo "<div class='alert alert-warning'>" . $t('No se encontró un computador con ese serial o nombre.') . "</div>";
+} elseif ($computer !== null) {
+    $candidates = Notice::buildCandidates($computer);
+    echo "<div class='border rounded p-3 mb-3 bg-light'>";
+    echo "<div class='mb-2'><i class='ti ti-device-desktop me-1'></i><a href='" . Compat::e(Computer::getFormURLWithID((int) $computer['id'])) . "'><strong>"
+        . Compat::e((string) $computer['name'], true) . "</strong></a>"
+        . ($computer['serial'] ? " <span class='text-muted'>· " . Compat::e((string) $computer['serial'], true) . "</span>" : '') . "</div>";
+    if ($candidates === []) {
+        echo "<div class='text-success'><i class='ti ti-circle-check me-1'></i>" . $t('Este equipo no tiene avisos hoy.') . "</div>";
     }
+    foreach ($candidates as $c) {
+        echo "<div class='border rounded p-3 mb-2 bg-white'>" . Notice::levelBadge($c['level']) . " <strong class='ms-1'>"
+            . Compat::e($c['title'], true) . "</strong><div class='mt-1'>" . Compat::e($c['message'], true) . "</div></div>";
+    }
+    if (!$settings['enabled']) {
+        echo "<div class='text-muted small'>" . $t('(Los avisos están desactivados; así se verían al activarlos.)') . "</div>";
+    }
+    echo "</div>";
+}
+
+// Equipos que hoy reciben aviso por el semáforo
+$due = array_values(array_filter(
+    $computers,
+    static fn ($r) => Notice::levelRank((string) $r['light']) > 0 && Notice::levelRank((string) $r['light']) >= $min_rank
+));
+echo "<h4 class='mt-2 mb-2'>" . Compat::e(sprintf(__('Equipos con aviso hoy (%d)', 'mantenimientos'), count($due))) . "</h4>";
+if ($due === []) {
+    echo "<div class='text-muted'>" . $t('Ningún computador está en el rango de aviso configurado.') . "</div>";
+} else {
+    echo "<div class='table-responsive'><table class='table table-sm table-hover'><thead><tr>";
+    foreach (['Estado', 'Equipo', 'Serial', 'Usuario asignado', 'Próximo', 'Días', 'Último aviso', ''] as $th) {
+        echo "<th>" . $t($th) . "</th>";
+    }
+    echo "</tr></thead><tbody>";
+    foreach ($due as $r) {
+        $id   = (int) $r['items_id'];
+        $days = $r['days'];
+        $url  = $self_url . '?preview_id=' . $id;
+        $sel  = $computer !== null && (int) $computer['id'] === $id ? " class='table-active'" : '';
+        echo "<tr{$sel}>";
+        echo "<td>" . Item::lightBadge((string) $r['light']) . "</td>";
+        echo "<td><a href='" . Compat::e(Computer::getFormURLWithID($id)) . "'>" . Compat::e((string) ($r['asset_name'] ?: '#' . $id), true) . "</a></td>";
+        echo "<td>" . Compat::e($serials[$id] ?? '', true) . "</td>";
+        echo "<td>" . Compat::e((string) $r['user'], true) . "</td>";
+        echo "<td>" . Compat::e($r['next_due_date'] ? Html::convDate($r['next_due_date']) : '—') . "</td>";
+        echo "<td>" . Compat::e($days === null ? '—' : ($days < 0 ? sprintf(__('%d de atraso', 'mantenimientos'), -$days) : (string) $days)) . "</td>";
+        echo "<td>" . (isset($last[$id]) ? Notice::responseBadge($last[$id]) : "<span class='text-muted'>" . $t('Nunca') . "</span>") . "</td>";
+        echo "<td class='text-end'><a class='btn btn-sm btn-outline-primary' href='" . Compat::e($url) . "'><i class='ti ti-eye me-1'></i>" . $t('Ver aviso') . "</a></td>";
+        echo "</tr>";
+    }
+    echo "</tbody></table></div>";
 }
 echo "</div></div></div>";
 
@@ -234,19 +306,9 @@ echo "</tr></thead><tbody>";
 if ($rows === []) {
     echo "<tr><td colspan='8' class='text-center text-muted p-4'>" . $t('Todavía no se ha mostrado ningún aviso.') . "</td></tr>";
 }
-$now = date('Y-m-d H:i:s');
 foreach ($rows as $row) {
-    $user = trim(($row['firstname'] ?? '') . ' ' . ($row['realname'] ?? '')) ?: (string) ($row['user_login'] ?? '');
-    if ((int) $row['ack_action'] === Notice::ACK_DONE) {
-        $answer = "<span class='badge bg-green-lt'>" . $t('Entendido') . "</span> " . Compat::e(Html::convDateTime($row['date_ack']));
-    } elseif (!empty($row['snooze_until']) && $row['snooze_until'] > $now) {
-        $answer = "<span class='badge bg-yellow-lt'>" . $t('Pospuesto') . "</span> " . Compat::e(sprintf(__('hasta %s', 'mantenimientos'), Html::convDateTime($row['snooze_until'])));
-    } else {
-        $answer = "<span class='badge bg-secondary-lt'>" . $t('Sin respuesta') . "</span>";
-    }
-    if ((int) $row['snooze_count'] > 0) {
-        $answer .= " <span class='text-muted small'>" . Compat::e(sprintf(_n('(pospuesto %d vez)', '(pospuesto %d veces)', (int) $row['snooze_count'], 'mantenimientos'), (int) $row['snooze_count'])) . "</span>";
-    }
+    $user   = trim(($row['firstname'] ?? '') . ' ' . ($row['realname'] ?? '')) ?: (string) ($row['user_login'] ?? '');
+    $answer = Notice::responseBadge($row);
 
     echo "<tr>";
     echo "<td><a href='" . Compat::e(Computer::getFormURLWithID((int) $row['items_id'])) . "'>"
