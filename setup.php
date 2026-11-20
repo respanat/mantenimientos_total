@@ -15,7 +15,7 @@ use GlpiPlugin\Mantenimientos\Item;
 use GlpiPlugin\Mantenimientos\Menu;
 use GlpiPlugin\Mantenimientos\Profile;
 
-define('PLUGIN_MANTENIMIENTOS_VERSION', '0.8.0');
+define('PLUGIN_MANTENIMIENTOS_VERSION', '0.9.0');
 // Compatible con GLPI 10, 11 y 12 (ver src/Compat.php).
 // 'max' es exclusivo: subirlo a 13.99.99 cuando GLPI 13 exista y se haya probado.
 define('PLUGIN_MANTENIMIENTOS_MIN_GLPI', '10.0.0');
@@ -33,6 +33,23 @@ function plugin_init_mantenimientos(): void
 
     if (!Plugin::isPluginActive('mantenimientos')) {
         return;
+    }
+
+    // Canal de avisos en Windows: front/notify.php lo consultan los equipos sin
+    // sesión de GLPI (se protege con token). GLPI 11+ exige declararlo en el
+    // firewall; además se marca sin estado para no crear una sesión por consulta.
+    // En GLPI 10 estas clases no existen y el script ya es accesible.
+    if (class_exists(\Glpi\Http\Firewall::class)
+        && method_exists(\Glpi\Http\Firewall::class, 'addPluginStrategyForLegacyScripts')) {
+        \Glpi\Http\Firewall::addPluginStrategyForLegacyScripts(
+            'mantenimientos',
+            '#^/front/notify\.php$#',
+            \Glpi\Http\Firewall::STRATEGY_NO_CHECK
+        );
+    }
+    if (class_exists(\Glpi\Http\SessionManager::class)
+        && method_exists(\Glpi\Http\SessionManager::class, 'registerPluginStatelessPath')) {
+        \Glpi\Http\SessionManager::registerPluginStatelessPath('mantenimientos', '#^/front/notify\.php$#');
     }
 
     // Pestaña de permisos en los perfiles de GLPI

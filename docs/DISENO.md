@@ -70,4 +70,8 @@ Planes · Mantenimientos · Métricas (lectura) · Configuración (lectura/actua
 ## Fases siguientes
 
 2. Ventana de aviso al usuario asignado al iniciar sesión en GLPI; correo para tablets y teléfonos.
-3. Aviso al iniciar sesión en Windows mediante tareas de despliegue (requiere plugin GLPI Inventory).
+3. ✅ Avisos en Windows (v0.9.0, aprobado 2026-11-20, dentro de este plugin para no mezclarlos con los avisos propios de GLPI).
+   - Tabla `notices`: un registro por equipo y motivo (`notice_key`, p. ej. `due:2026-12-01:critical`), veces mostrado, usuario de Windows, respuesta (Entendido / pospuesto hasta).
+   - `front/notify.php` (GET, sin sesión, token): `pending`, `respond`, `ping`.
+   - Cliente PowerShell en la sesión del usuario (tarea programada del grupo Usuarios), notificación nativa con botones vía protocolo `mantavisos:`; plan B: ventana emergente.
+   - Instalador único descargable desde el plugin para un paquete de despliegue de GLPI Inventory.

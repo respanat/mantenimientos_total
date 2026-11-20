@@ -199,6 +199,35 @@ function plugin_mantenimientos_schema(string $sign): array
             UNIQUE KEY `snapshot_date` (`snapshot_date`)
         ",
 
+        // Avisos al usuario en Windows (fase 3): uno por equipo y motivo.
+        // notice_key identifica el motivo (ej. due:2026-12-01:critical); si el
+        // semáforo escala, cambia la clave y el aviso se vuelve a mostrar.
+        'glpi_plugin_mantenimientos_notices' => "
+            `id` int {$sign} NOT NULL AUTO_INCREMENT,
+            `itemtype` varchar(100) NOT NULL DEFAULT '',
+            `items_id` {$fk},
+            `notice_key` varchar(100) NOT NULL DEFAULT '',
+            `level` varchar(20) NOT NULL DEFAULT '' COMMENT 'warning, critical, overdue, scheduled',
+            `title` varchar(255) DEFAULT NULL,
+            `message` text,
+            `times_shown` int NOT NULL DEFAULT '0',
+            `date_first_shown` timestamp NULL DEFAULT NULL,
+            `date_last_shown` timestamp NULL DEFAULT NULL,
+            `snooze_until` timestamp NULL DEFAULT NULL,
+            `snooze_count` int NOT NULL DEFAULT '0',
+            `ack_action` tinyint NOT NULL DEFAULT '0' COMMENT '0 sin respuesta, 1 entendido',
+            `date_ack` timestamp NULL DEFAULT NULL,
+            `windows_user` varchar(255) DEFAULT NULL,
+            `computer_name` varchar(255) DEFAULT NULL,
+            `date_creation` timestamp NULL DEFAULT NULL,
+            `date_mod` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `item_notice` (`itemtype`, `items_id`, `notice_key`),
+            KEY `level` (`level`),
+            KEY `date_last_shown` (`date_last_shown`),
+            KEY `date_ack` (`date_ack`)
+        ",
+
         // Configuración clave/valor
         'glpi_plugin_mantenimientos_configs' => "
             `id` int {$sign} NOT NULL AUTO_INCREMENT,
@@ -223,6 +252,17 @@ function plugin_mantenimientos_default_config(): array
         'replacement_cost_pct'    => '50', // Costo acumulado vs valor de compra
         'recurrence_count'        => '2',  // Correctivos para marcar reincidente...
         'recurrence_months'       => '12', // ...dentro de estos meses
+        // Avisos en Windows (fase 3)
+        'notify_enabled'          => '0',       // Apagado hasta que se configure
+        'notify_token'            => '',        // Se genera al instalar
+        'notify_min_light'        => 'warning', // Desde qué color se avisa: warning, critical, overdue
+        'notify_scheduled'        => '1',       // Avisar mantenimientos programados con fecha
+        'notify_reshow_hours'     => '4',       // Repetir un aviso sin respuesta cada N horas (y al iniciar sesión)
+        'notify_snooze_hours'     => '4',       // "Recordar más tarde" lo oculta N horas
+        'notify_repeat_hours'     => '24',      // Vencidos: se repiten cada N horas aunque ya se hayan visto
+        'notify_poll_minutes'     => '60',      // Cada cuánto consulta el equipo
+        'notify_contact'          => '',        // Texto final, ej. "Soporte TI: ext. 123"
+        'notify_display_name'     => 'Mantenimiento de equipos', // Origen que muestra Windows
     ];
 }
 
@@ -284,6 +324,19 @@ function plugin_mantenimientos_install(): bool
                 'value' => $value,
             ]);
         }
+    }
+
+    // 2b. Token del canal de avisos (solo si aún no existe)
+    $token_row = $DB->request([
+        'FROM'  => 'glpi_plugin_mantenimientos_configs',
+        'WHERE' => ['name' => 'notify_token'],
+    ])->current();
+    if ($token_row !== null && ($token_row['value'] ?? '') === '') {
+        $DB->update(
+            'glpi_plugin_mantenimientos_configs',
+            ['value' => bin2hex(random_bytes(24))],
+            ['name' => 'notify_token']
+        );
     }
 
     // 3. Permisos: se crean en todos los perfiles en 0...

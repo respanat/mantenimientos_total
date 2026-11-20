@@ -57,7 +57,22 @@ Al instalar, los perfiles con permiso de actualizar la configuración (Super-Adm
 | 1 | Equipos con semáforo, tablero e historial | ✅ v0.6.0 – v0.7.0 |
 | 1 | Métricas de cumplimiento, seguimiento y control | ⏳ |
 | 2 | Aviso al usuario asignado al iniciar sesión en GLPI / correo | 🔜 |
-| 3 | Aviso al iniciar sesión en Windows (tareas de despliegue) | 🔜 |
+| 3 | Avisos en Windows (notificación nativa, Entendido / Recordar más tarde) | ✅ v0.9.0 |
+
+## Avisos en Windows
+
+El agente de GLPI corre como servicio (sesión 0) y no puede mostrar nada en el escritorio del usuario. Por eso el plugin trae su propio notificador, que corre en la sesión de cada usuario:
+
+1. **Mantenimientos > Avisos en Windows**: activar, elegir desde qué color avisar y descargar el instalador (ya trae la URL y el token).
+2. Paquete de despliegue de GLPI Inventory con el instalador y la acción *Ejecutar comando*:
+   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File Instalar-AvisosMantenimiento.ps1`
+3. Cada equipo consulta `front/notify.php` al iniciar sesión y cada N minutos, y muestra una notificación de Windows 10/11 con **Entendido** y **Recordar más tarde**. La respuesta queda en el registro de la misma pantalla.
+
+Reglas: cada cambio de color (🟡 → 🟠 → 🔴) avisa de nuevo; sin respuesta se repite cada N horas y al iniciar sesión; los vencidos se quedan en pantalla y vuelven a salir cada N horas aunque se hayan aceptado. Un mantenimiento programado con fecha avisa en lugar del semáforo.
+
+El equipo se identifica por número de serie (o por nombre si el serial es genérico). `front/notify.php` no usa sesión de GLPI: lo protege el token (en GLPI 11+ se declara en el firewall como público y sin estado). El token va en `%ProgramData%\MantenimientosAvisos\config.json`, legible por los usuarios del equipo; con él solo se pueden consultar y responder avisos. Si se filtra, se regenera y se vuelve a desplegar.
+
+Archivos del cliente en `tools/windows/`. Prueba en un equipo: `wscript "%ProgramData%\MantenimientosAvisos\ejecutar-oculto.vbs" -Prueba`. Registro local: `%LOCALAPPDATA%\MantenimientosAvisos\avisos.log`.
 
 ## Compatibilidad
 
@@ -77,7 +92,7 @@ Reglas al desarrollar:
 2. Los métodos que se sobrescriben del núcleo deben declarar el tipo de retorno de GLPI 12 si este lo tiene (agregar tipo de retorno es válido en 10 y 11).
 3. Formularios: cerrar siempre con `Html::closeForm()`, que pone el token CSRF solo en las versiones que lo usan.
 
-Prueba rápida sin GLPI: `php tests/compat_check.php 11` y `php tests/compat_check.php 12`.
+Prueba rápida sin GLPI: `php tests/compat_check.php 11`, `php tests/compat_check.php 12` y `php tests/notice_check.php`.
 
 ## Licencia
 

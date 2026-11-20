@@ -47,6 +47,11 @@ if (Session::haveRight(Plan::$rightname, READ)) {
     echo "<a class='btn btn-primary' href='" . Compat::e(Plan::getSearchURL()) . "'><i class='" . Compat::e(Plan::getIcon()) . " me-1'></i>"
         . Compat::e(Plan::getTypeName(Session::getPluralNumber())) . "</a>";
 }
+if (Session::haveRight(GlpiPlugin\Mantenimientos\Config::$rightname, READ)) {
+    echo "<a class='btn btn-outline-primary' href='" . Compat::e(Menu::WEB_ROOT . '/front/notify.config.php') . "'><i class='"
+        . Compat::e(GlpiPlugin\Mantenimientos\Notice::getIcon()) . " me-1'></i>"
+        . Compat::e(GlpiPlugin\Mantenimientos\Notice::getTypeName(Session::getPluralNumber())) . "</a>";
+}
 echo "</div></div>";
 
 echo "<div class='card-body'>";

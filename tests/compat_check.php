@@ -44,12 +44,12 @@ spl_autoload_register(function ($c) {
 });
 
 use GlpiPlugin\Mantenimientos as M;
-$classes = ['Plan', 'PlanTask', 'Item', 'Maintenance', 'Check', 'Cost', 'StatusLog', 'Config', 'Metrics', 'Menu'];
+$classes = ['Plan', 'PlanTask', 'Item', 'Maintenance', 'Check', 'Cost', 'StatusLog', 'Config', 'Metrics', 'Notice', 'Menu'];
 foreach ($classes as $c) { class_exists("GlpiPlugin\\Mantenimientos\\$c"); }
 
 // Cada clase debe tener su propio rightname (no compartir el estático del padre)
 printf("GLPI %s | typed=%s\n", GLPI_VERSION, var_export(M\Compat::typedCoreProperties(), true));
-foreach (['Plan', 'PlanTask', 'Item', 'Maintenance', 'Check', 'Cost', 'StatusLog', 'Config', 'Metrics'] as $c) {
+foreach (['Plan', 'PlanTask', 'Item', 'Maintenance', 'Check', 'Cost', 'StatusLog', 'Config', 'Metrics', 'Notice'] as $c) {
     $fq = "GlpiPlugin\\Mantenimientos\\$c";
     printf("  %-12s rightname=%-36s table=%s\n", $c, $fq::$rightname, $fq::getTable());
 }

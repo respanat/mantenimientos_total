@@ -16,7 +16,7 @@ use Session;
 
 /**
  * Entrada "Mantenimientos" en los menús Herramientas y Activos.
- * Vistas: Tablero, Equipos (semáforo), Historial, Planes, Métricas, Configuración.
+ * Vistas: Tablero, Equipos (semáforo), Historial, Planes, Avisos en Windows.
  */
 class Menu extends CommonGLPI
 {
@@ -85,6 +85,14 @@ class Menu extends CommonGLPI
                 'page'  => Maintenance::getSearchURL(false),
                 'icon'  => 'ti ti-history',
                 'links' => ['search' => Maintenance::getSearchURL(false)],
+            ];
+        }
+
+        if (Session::haveRight(Config::$rightname, READ)) {
+            $menu['options']['notify'] = [
+                'title' => Notice::getTypeName(Session::getPluralNumber()),
+                'page'  => self::WEB_ROOT . '/front/notify.config.php',
+                'icon'  => Notice::getIcon(),
             ];
         }
 
