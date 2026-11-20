@@ -63,6 +63,7 @@ $Levels = @{
     critical  = @{ Color = '#F76707'; Glyph = '!' }
     overdue   = @{ Color = '#D63939'; Glyph = '!' }
     scheduled = @{ Color = '#4263EB'; Glyph = 'i' }
+    test      = @{ Color = '#6C757D'; Glyph = 'i' }
 }
 
 # ---------------------------------------------------------------------------

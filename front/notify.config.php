@@ -52,6 +52,25 @@ if (isset($_POST['save'])) {
     Config::setValue('notify_display_name', $display !== '' ? $display : 'Mantenimiento de equipos');
     Session::addMessageAfterRedirect(__('Configuración de avisos guardada.', 'mantenimientos'));
     Html::back();
+} elseif (isset($_POST['send_test'])) {
+    Session::checkRight(Config::$rightname, UPDATE);
+    $test_computer = Notice::getComputerById((int) ($_POST['computers_id'] ?? 0));
+    if ($test_computer === null) {
+        Session::addMessageAfterRedirect(__('No se encontró el computador.', 'mantenimientos'), false, ERROR);
+    } else {
+        Notice::queueTest($test_computer, (string) ($_SESSION['glpifriendlyname'] ?? ''));
+        Session::addMessageAfterRedirect(sprintf(
+            __('Aviso de prueba en cola para %1$s. Se mostrará en la próxima consulta del equipo (cada %2$d minutos) o al iniciar sesión.', 'mantenimientos'),
+            (string) $test_computer['name'],
+            Notice::getSettings()['poll_minutes']
+        ));
+    }
+    Html::back();
+} elseif (isset($_POST['cancel_test'])) {
+    Session::checkRight(Config::$rightname, UPDATE);
+    Notice::cancelTest((int) ($_POST['notices_id'] ?? 0));
+    Session::addMessageAfterRedirect(__('Aviso de prueba cancelado.', 'mantenimientos'));
+    Html::back();
 } elseif (isset($_POST['regenerate_token'])) {
     Session::checkRight(Config::$rightname, UPDATE);
     Config::setValue('notify_token', Notice::generateToken());
@@ -256,6 +275,46 @@ if (($preview_id > 0 || $preview_q !== '') && $computer === null) {
     }
     if (!$settings['enabled']) {
         echo "<div class='text-muted small'>" . $t('(Los avisos están desactivados; así se verían al activarlos.)') . "</div>";
+    }
+
+    // Aviso de prueba: confirma de punta a punta que el equipo recibe notificaciones
+    $test = Notice::getLastTest((int) $computer['id']);
+    echo "<div class='border-top pt-3 mt-3 d-flex flex-wrap align-items-center gap-2'>";
+    echo "<span class='fw-bold me-2'><i class='ti ti-send me-1'></i>" . $t('Aviso de prueba') . "</span>";
+    if ($test !== null) {
+        echo "<span>" . Notice::responseBadge($test) . "</span>";
+        if ((int) $test['times_shown'] > 0) {
+            echo "<span class='text-muted small'>" . Compat::e(sprintf(
+                __('mostrado %1$s a %2$s', 'mantenimientos'),
+                Html::convDateTime($test['date_last_shown']),
+                (string) $test['windows_user']
+            ), true) . "</span>";
+        }
+    } else {
+        echo "<span class='text-muted small'>" . $t('Nunca se ha enviado una prueba a este equipo.') . "</span>";
+    }
+    if ($can_update) {
+        echo "<span class='ms-auto d-flex gap-2'>";
+        if ($test !== null && (int) $test['times_shown'] === 0) {
+            echo "<form method='post' action='" . Compat::e($self_url) . "' class='d-inline'>"
+                . "<input type='hidden' name='notices_id' value='" . (int) $test['id'] . "'>"
+                . "<button type='submit' name='cancel_test' value='1' class='btn btn-sm btn-outline-secondary'><i class='ti ti-x me-1'></i>" . $t('Cancelar prueba') . "</button>";
+            Html::closeForm();
+        } else {
+            echo "<form method='post' action='" . Compat::e($self_url) . "' class='d-inline'>"
+                . "<input type='hidden' name='computers_id' value='" . (int) $computer['id'] . "'>"
+                . "<button type='submit' name='send_test' value='1' class='btn btn-sm btn-primary'><i class='ti ti-send me-1'></i>" . $t('Enviar aviso de prueba') . "</button>";
+            Html::closeForm();
+        }
+        echo "</span>";
+    }
+    echo "</div>";
+    echo "<div class='form-hint mt-1'>" . Compat::e(sprintf(
+        __('El equipo no recibe nada al instante: lo toma en su próxima consulta (cada %d minutos) o al iniciar sesión. Recargue esta página para ver si ya se mostró y qué respondió el usuario.', 'mantenimientos'),
+        $settings['poll_minutes']
+    )) . "</div>";
+    if (!$settings['enabled']) {
+        echo "<div class='text-warning small mt-1'>" . $t('Con los avisos desactivados el equipo no consulta avisos, ni siquiera los de prueba.') . "</div>";
     }
     echo "</div>";
 }

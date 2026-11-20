@@ -35,6 +35,7 @@ abstract class NoticeBase extends CommonDBTM
     public const LEVEL_CRITICAL  = 'critical';
     public const LEVEL_OVERDUE   = 'overdue';
     public const LEVEL_SCHEDULED = 'scheduled';
+    public const LEVEL_TEST      = 'test';
 
     public const ACK_NONE = 0;
     public const ACK_DONE = 1;
@@ -397,7 +398,111 @@ abstract class NoticeBase extends CommonDBTM
             $out[] = ['id' => $id] + $candidate;
         }
 
+        // Avisos de prueba en cola (botón "Enviar aviso de prueba"): se entregan
+        // una vez, aunque los avisos de semáforo no apliquen a este equipo.
+        foreach (
+            $DB->request([
+                'FROM'  => $table,
+                'WHERE' => [
+                    'itemtype'    => \Computer::class,
+                    'items_id'    => $items_id,
+                    'level'       => self::LEVEL_TEST,
+                    'times_shown' => 0,
+                ],
+            ]) as $row
+        ) {
+            $DB->update($table, [
+                'times_shown'      => 1,
+                'date_first_shown' => $now_txt,
+                'date_last_shown'  => $now_txt,
+                'windows_user'     => mb_substr($windows_user, 0, 255),
+                'computer_name'    => mb_substr($computer_name, 0, 255),
+                'date_mod'         => $now_txt,
+            ], ['id' => (int) $row['id']]);
+            $out[] = [
+                'id'      => (int) $row['id'],
+                'key'     => (string) $row['notice_key'],
+                'level'   => self::LEVEL_TEST,
+                'title'   => (string) $row['title'],
+                'message' => (string) $row['message'],
+            ];
+        }
+
         return $out;
+    }
+
+    /**
+     * Deja en cola un aviso de prueba para el equipo. Se muestra en la próxima
+     * consulta del equipo (o al iniciar sesión). Si ya hay uno en cola, lo reutiliza.
+     *
+     * @param array<string, mixed> $computer
+     * @return int id del aviso de prueba
+     */
+    public static function queueTest(array $computer, string $sender): int
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+
+        $table    = Notice::getTable();
+        $items_id = (int) $computer['id'];
+        $queued   = $DB->request([
+            'SELECT' => ['id'],
+            'FROM'   => $table,
+            'WHERE'  => ['itemtype' => \Computer::class, 'items_id' => $items_id, 'level' => self::LEVEL_TEST, 'times_shown' => 0],
+            'LIMIT'  => 1,
+        ])->current();
+        if ($queued) {
+            return (int) $queued['id'];
+        }
+
+        $now   = new \DateTimeImmutable();
+        $asset = (string) ($computer['name'] ?? '') !== '' ? (string) $computer['name'] : ('#' . $items_id);
+        $DB->insert($table, [
+            'itemtype'      => \Computer::class,
+            'items_id'      => $items_id,
+            'notice_key'    => 'test:' . $now->format('YmdHis'),
+            'level'         => self::LEVEL_TEST,
+            'title'         => __('Aviso de prueba', 'mantenimientos'),
+            'message'       => sprintf(
+                __('Prueba de notificaciones enviada desde GLPI por %1$s para el equipo %2$s. Pulsa "Entendido" para confirmar que llegó.', 'mantenimientos'),
+                $sender !== '' ? $sender : __('soporte', 'mantenimientos'),
+                $asset
+            ),
+            'times_shown'   => 0,
+            'date_creation' => $now->format('Y-m-d H:i:s'),
+            'date_mod'      => $now->format('Y-m-d H:i:s'),
+        ]);
+        return (int) $DB->insertId();
+    }
+
+    /**
+     * Último aviso de prueba del equipo (en cola o ya mostrado).
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function getLastTest(int $computers_id): ?array
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+
+        $row = $DB->request([
+            'FROM'  => Notice::getTable(),
+            'WHERE' => ['itemtype' => \Computer::class, 'items_id' => $computers_id, 'level' => self::LEVEL_TEST],
+            'ORDER' => ['id DESC'],
+            'LIMIT' => 1,
+        ])->current();
+        return $row ?: null;
+    }
+
+    /**
+     * Borra un aviso de prueba que sigue en cola.
+     */
+    public static function cancelTest(int $notices_id): bool
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+
+        return (bool) $DB->delete(Notice::getTable(), ['id' => $notices_id, 'level' => self::LEVEL_TEST, 'times_shown' => 0]);
     }
 
     /**
@@ -537,6 +642,10 @@ abstract class NoticeBase extends CommonDBTM
     {
         $e   = [\GlpiPlugin\Mantenimientos\Compat::class, 'e'];
         $now = date('Y-m-d H:i:s');
+        if ((int) ($row['times_shown'] ?? 0) === 0) {
+            return "<span class='badge bg-blue-lt'>" . $e(__('En cola', 'mantenimientos')) . "</span> <span class='text-muted small'>"
+                . $e(__('se mostrará en la próxima consulta del equipo', 'mantenimientos')) . "</span>";
+        }
         if ((int) $row['ack_action'] === self::ACK_DONE) {
             $html = "<span class='badge bg-green-lt'>" . $e(__('Entendido', 'mantenimientos')) . "</span> "
                 . $e(\Html::convDateTime($row['date_ack']));
@@ -575,7 +684,7 @@ abstract class NoticeBase extends CommonDBTM
                 \Computer::getTable() . ' AS c' => ['ON' => ['n' => 'items_id', 'c' => 'id']],
                 'glpi_users AS u'                => ['ON' => ['c' => 'users_id', 'u' => 'id']],
             ],
-            'ORDER'     => ['n.date_last_shown DESC'],
+            'ORDER'     => ['n.date_mod DESC'],
             'LIMIT'     => $limit,
         ]), false);
     }
@@ -594,7 +703,7 @@ abstract class NoticeBase extends CommonDBTM
         $now   = date('Y-m-d H:i:s');
         $out   = ['shown' => 0, 'done' => 0, 'snoozed' => 0, 'pending' => 0, 'computers' => 0];
         $seen  = [];
-        foreach ($DB->request(['FROM' => Notice::getTable(), 'WHERE' => ['date_last_shown' => ['>=', $since]]]) as $row) {
+        foreach ($DB->request(['FROM' => Notice::getTable(), 'WHERE' => ['date_last_shown' => ['>=', $since], 'level' => ['<>', self::LEVEL_TEST]]]) as $row) {
             $out['shown']++;
             $seen[(int) $row['items_id']] = true;
             if ((int) $row['ack_action'] === self::ACK_DONE) {
@@ -657,6 +766,7 @@ abstract class NoticeBase extends CommonDBTM
             self::LEVEL_WARNING   => $lights[Item::LIGHT_WARNING],
             self::LEVEL_CRITICAL  => $lights[Item::LIGHT_CRITICAL],
             self::LEVEL_OVERDUE   => $lights[Item::LIGHT_OVERDUE],
+            self::LEVEL_TEST      => ['label' => __('Prueba', 'mantenimientos'), 'color' => '#6c757d', 'text' => '#fff'],
             default               => ['label' => __('Programado', 'mantenimientos'), 'color' => '#4263eb', 'text' => '#fff'],
         };
         return sprintf(
