@@ -195,7 +195,7 @@ $preview_q  = mb_substr(trim((string) ($_GET['preview'] ?? '')), 0, 255);
 
 $computers = Item::getRows(['itemtype' => Computer::class]);
 $ids       = array_map(static fn ($r) => (int) $r['items_id'], $computers);
-$serials   = Notice::getSerials($ids);
+$info      = Notice::getComputerInfo($ids);
 $last      = Notice::getLastByComputer($ids);
 $lights    = Item::getLights();
 $min_rank  = Notice::levelRank($settings['min_light']);
@@ -212,8 +212,8 @@ echo "<div class='col-md-6'><label class='form-label'>" . $t('Computador (nombre
 echo "<datalist id='mant-computers'>";
 foreach ($computers as $r) {
     $label = implode(' · ', array_filter([
-        $serials[(int) $r['items_id']] ?? '',
-        (string) $r['user'],
+        $info[(int) $r['items_id']]['serial'] ?? '',
+        ($info[(int) $r['items_id']]['contact'] ?? '') ?: (string) $r['user'],
         $lights[$r['light']]['label'] ?? '',
     ], static fn ($v) => $v !== ''));
     echo "<option value='" . Compat::e((string) $r['asset_name'], true) . "' label='" . Compat::e($label, true) . "'></option>";
@@ -270,7 +270,7 @@ if ($due === []) {
     echo "<div class='text-muted'>" . $t('Ningún computador está en el rango de aviso configurado.') . "</div>";
 } else {
     echo "<div class='table-responsive'><table class='table table-sm table-hover'><thead><tr>";
-    foreach (['Estado', 'Equipo', 'Serial', 'Usuario asignado', 'Próximo', 'Días', 'Último aviso', ''] as $th) {
+    foreach (['Estado', 'Equipo', 'Serial', 'Usuario', 'Próximo', 'Días', 'Último aviso', ''] as $th) {
         echo "<th>" . $t($th) . "</th>";
     }
     echo "</tr></thead><tbody>";
@@ -282,12 +282,12 @@ if ($due === []) {
         echo "<tr{$sel}>";
         echo "<td>" . Item::lightBadge((string) $r['light']) . "</td>";
         echo "<td><a href='" . Compat::e(Computer::getFormURLWithID($id)) . "'>" . Compat::e((string) ($r['asset_name'] ?: '#' . $id), true) . "</a></td>";
-        echo "<td>" . Compat::e($serials[$id] ?? '', true) . "</td>";
-        echo "<td>" . Compat::e((string) $r['user'], true) . "</td>";
+        echo "<td>" . Compat::e($info[$id]['serial'] ?? '', true) . "</td>";
+        echo "<td>" . Notice::userCell($info[$id]['contact'] ?? '', (string) $r['user']) . "</td>";
         echo "<td>" . Compat::e($r['next_due_date'] ? Html::convDate($r['next_due_date']) : '—') . "</td>";
         echo "<td>" . Compat::e($days === null ? '—' : ($days < 0 ? sprintf(__('%d de atraso', 'mantenimientos'), -$days) : (string) $days)) . "</td>";
         echo "<td>" . (isset($last[$id]) ? Notice::responseBadge($last[$id]) : "<span class='text-muted'>" . $t('Nunca') . "</span>") . "</td>";
-        echo "<td class='text-end'><a class='btn btn-sm btn-outline-primary' href='" . Compat::e($url) . "'><i class='ti ti-eye me-1'></i>" . $t('Ver aviso') . "</a></td>";
+        echo "<td class='text-end'><a class='btn btn-sm btn-primary' href='" . Compat::e($url) . "'><i class='ti ti-eye me-1'></i>" . $t('Ver aviso') . "</a></td>";
         echo "</tr>";
     }
     echo "</tbody></table></div>";
@@ -299,7 +299,7 @@ $rows = Notice::getRecent(100);
 echo "<div class='col-12'><div class='card'>";
 echo "<div class='card-header'><h3 class='card-title mb-0'><i class='ti ti-list-check me-2'></i>" . $t('Registro de avisos') . "</h3></div>";
 echo "<div class='table-responsive'><table class='table table-hover card-table'><thead><tr>";
-foreach (['Equipo', 'Usuario asignado', 'Usuario de Windows', 'Aviso', 'Veces', 'Primera vez', 'Última vez', 'Respuesta'] as $th) {
+foreach (['Equipo', 'Usuario', 'Usuario de Windows', 'Aviso', 'Veces', 'Primera vez', 'Última vez', 'Respuesta'] as $th) {
     echo "<th>" . $t($th) . "</th>";
 }
 echo "</tr></thead><tbody>";
@@ -313,7 +313,7 @@ foreach ($rows as $row) {
     echo "<tr>";
     echo "<td><a href='" . Compat::e(Computer::getFormURLWithID((int) $row['items_id'])) . "'>"
         . Compat::e((string) ($row['asset_name'] ?: '#' . $row['items_id']), true) . "</a></td>";
-    echo "<td>" . Compat::e($user, true) . "</td>";
+    echo "<td>" . Notice::userCell((string) ($row['contact'] ?? ''), $user) . "</td>";
     echo "<td>" . Compat::e((string) $row['windows_user'], true) . "</td>";
     echo "<td>" . Notice::levelBadge((string) $row['level']) . " <span title='" . Compat::e((string) $row['message'], true) . "'>"
         . Compat::e((string) $row['title'], true) . "</span></td>";

@@ -101,10 +101,17 @@ function Register-App($cfg) {
 function Get-Identity {
     $serial = ''
     try { $serial = [string](Get-CimInstance -ClassName Win32_BIOS).SerialNumber } catch { }
+    # En equipos unidos a Entra ID la cuenta útil es el UPN (usuario@dominio);
+    # en cuentas locales o de dominio clásico se usa DOMINIO\usuario.
+    $user = '{0}\{1}' -f $env:USERDOMAIN, $env:USERNAME
+    try {
+        $upn = [string](& "$env:SystemRoot\System32\whoami.exe" /upn 2>$null)
+        if ($upn -match '^[^@\s]+@[^@\s]+$') { $user = $upn.Trim() }
+    } catch { }
     return @{
         serial = $serial.Trim()
         name   = $env:COMPUTERNAME
-        user   = '{0}\{1}' -f $env:USERDOMAIN, $env:USERNAME
+        user   = $user
     }
 }
 

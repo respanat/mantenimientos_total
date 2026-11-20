@@ -133,7 +133,7 @@ abstract class NoticeBase extends CommonDBTM
      * Busca el computador por serial (preferido) o por nombre.
      * Si el serial coincide con varios equipos, desempata con el nombre.
      *
-     * @return array<string, mixed>|null id, name, serial, users_id, entities_id
+     * @return array<string, mixed>|null id, name, serial, contact, users_id, entities_id
      */
     public static function findComputer(string $serial, string $name): ?array
     {
@@ -143,7 +143,7 @@ abstract class NoticeBase extends CommonDBTM
         $serial = trim($serial);
         $name   = trim($name);
         $base   = [
-            'SELECT' => ['id', 'name', 'serial', 'users_id', 'entities_id'],
+            'SELECT' => ['id', 'name', 'serial', 'contact', 'users_id', 'entities_id'],
             'FROM'   => \Computer::getTable(),
             'WHERE'  => ['is_deleted' => 0, 'is_template' => 0],
         ];
@@ -181,9 +181,10 @@ abstract class NoticeBase extends CommonDBTM
      * Avisos que le corresponden al equipo hoy, sin mirar si ya se mostraron.
      *
      * @param array<string, mixed> $computer fila de findComputer()
+     * @param string $windows_user cuenta con la que se consulta (UPN o DOMINIO\usuario), para el saludo
      * @return list<array{key: string, level: string, title: string, message: string}>
      */
-    public static function buildCandidates(array $computer, ?\DateTimeImmutable $today = null): array
+    public static function buildCandidates(array $computer, ?\DateTimeImmutable $today = null, string $windows_user = ''): array
     {
         /** @var \DBmysql $DB */
         global $DB;
@@ -191,7 +192,7 @@ abstract class NoticeBase extends CommonDBTM
         $today    ??= new \DateTimeImmutable('today');
         $settings = self::getSettings();
         $items_id = (int) $computer['id'];
-        $greeting = self::greeting((int) ($computer['users_id'] ?? 0));
+        $greeting = self::greeting($computer, $windows_user);
         $asset    = (string) ($computer['name'] ?? '') !== '' ? (string) $computer['name'] : ('#' . $items_id);
         $out      = [];
 
@@ -358,7 +359,7 @@ abstract class NoticeBase extends CommonDBTM
         $table    = Notice::getTable();
         $out      = [];
 
-        foreach (self::buildCandidates($computer) as $candidate) {
+        foreach (self::buildCandidates($computer, null, $windows_user) as $candidate) {
             $crit = ['itemtype' => \Computer::class, 'items_id' => $items_id, 'notice_key' => $candidate['key']];
             $row  = $DB->request(['FROM' => $table, 'WHERE' => $crit])->current();
 
@@ -455,7 +456,7 @@ abstract class NoticeBase extends CommonDBTM
         global $DB;
 
         $row = $DB->request([
-            'SELECT' => ['id', 'name', 'serial', 'users_id', 'entities_id'],
+            'SELECT' => ['id', 'name', 'serial', 'contact', 'users_id', 'entities_id'],
             'FROM'   => \Computer::getTable(),
             'WHERE'  => ['id' => $id, 'is_deleted' => 0, 'is_template' => 0],
         ])->current();
@@ -463,12 +464,12 @@ abstract class NoticeBase extends CommonDBTM
     }
 
     /**
-     * Seriales de varios computadores (id => serial).
+     * Serial y usuario alternativo (el que detecta el inventario) de varios computadores.
      *
      * @param list<int> $ids
-     * @return array<int, string>
+     * @return array<int, array{serial: string, contact: string}>
      */
-    public static function getSerials(array $ids): array
+    public static function getComputerInfo(array $ids): array
     {
         /** @var \DBmysql $DB */
         global $DB;
@@ -477,10 +478,27 @@ abstract class NoticeBase extends CommonDBTM
         if ($ids === []) {
             return $out;
         }
-        foreach ($DB->request(['SELECT' => ['id', 'serial'], 'FROM' => \Computer::getTable(), 'WHERE' => ['id' => $ids]]) as $row) {
-            $out[(int) $row['id']] = (string) $row['serial'];
+        foreach ($DB->request(['SELECT' => ['id', 'serial', 'contact'], 'FROM' => \Computer::getTable(), 'WHERE' => ['id' => $ids]]) as $row) {
+            $out[(int) $row['id']] = ['serial' => (string) $row['serial'], 'contact' => (string) $row['contact']];
         }
         return $out;
+    }
+
+    /**
+     * Celda "Usuario": el usuario alternativo (inventario) y, debajo, el asignado en GLPI.
+     */
+    public static function userCell(string $contact, string $assigned): string
+    {
+        $e     = [\GlpiPlugin\Mantenimientos\Compat::class, 'e'];
+        $parts = [];
+        if (trim($contact) !== '') {
+            $parts[] = $e($contact, true);
+        }
+        if (trim($assigned) !== '' && strcasecmp(trim($assigned), trim($contact)) !== 0) {
+            $parts[] = "<span class='text-muted small' title='" . $e(__('Usuario asignado en GLPI', 'mantenimientos')) . "'>"
+                . "<i class='ti ti-user me-1'></i>" . $e($assigned, true) . "</span>";
+        }
+        return $parts === [] ? '—' : implode('<br>', $parts);
     }
 
     /**
@@ -549,7 +567,7 @@ abstract class NoticeBase extends CommonDBTM
 
         return iterator_to_array($DB->request([
             'SELECT'    => [
-                'n.*', 'c.name AS asset_name',
+                'n.*', 'c.name AS asset_name', 'c.contact',
                 'u.name AS user_login', 'u.firstname', 'u.realname',
             ],
             'FROM'      => Notice::getTable() . ' AS n',
@@ -653,9 +671,26 @@ abstract class NoticeBase extends CommonDBTM
     // Utilidades de texto
     // ---------------------------------------------------------------------
 
-    private static function greeting(int $users_id): string
+    /**
+     * Saludo con el nombre del usuario. Orden: usuario asignado en GLPI, usuario
+     * alternativo del inventario y cuenta de Windows que consulta (UPN de Entra ID).
+     *
+     * @param array<string, mixed> $computer
+     */
+    private static function greeting(array $computer, string $windows_user = ''): string
     {
-        if ($users_id > 0) {
+        $ids = [];
+        if ((int) ($computer['users_id'] ?? 0) > 0) {
+            $ids[] = (int) $computer['users_id'];
+        }
+        foreach ([(string) ($computer['contact'] ?? ''), $windows_user] as $account) {
+            $found = self::findUserIdByAccount($account);
+            if ($found > 0) {
+                $ids[] = $found;
+            }
+        }
+
+        foreach ($ids as $users_id) {
             $user = new \User();
             if ($user->getFromDB($users_id)) {
                 $first = trim((string) ($user->fields['firstname'] ?? ''));
@@ -665,6 +700,52 @@ abstract class NoticeBase extends CommonDBTM
             }
         }
         return __('Hola,', 'mantenimientos');
+    }
+
+    /**
+     * Usuario de GLPI que corresponde a una cuenta de Windows: por login
+     * (tal cual o sin "DOMINIO\") o por correo (UPN de Entra ID).
+     */
+    public static function findUserIdByAccount(string $account): int
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+
+        $account = trim($account);
+        if ($account === '') {
+            return 0;
+        }
+        $names = [$account];
+        if (str_contains($account, '\\')) {
+            $names[] = substr($account, strrpos($account, '\\') + 1);
+        }
+        $names = array_values(array_unique(array_filter($names, static fn ($v) => $v !== '')));
+
+        $row = $DB->request([
+            'SELECT' => ['id'],
+            'FROM'   => 'glpi_users',
+            'WHERE'  => ['name' => $names, 'is_deleted' => 0],
+            'LIMIT'  => 1,
+        ])->current();
+        if ($row) {
+            return (int) $row['id'];
+        }
+
+        foreach ($names as $name) {
+            if (str_contains($name, '@')) {
+                $row = $DB->request([
+                    'SELECT'     => ['e.users_id'],
+                    'FROM'       => 'glpi_useremails AS e',
+                    'INNER JOIN' => ['glpi_users AS u' => ['ON' => ['e' => 'users_id', 'u' => 'id']]],
+                    'WHERE'      => ['e.email' => $name, 'u.is_deleted' => 0],
+                    'LIMIT'      => 1,
+                ])->current();
+                if ($row) {
+                    return (int) $row['users_id'];
+                }
+            }
+        }
+        return 0;
     }
 
     private static function withContact(string $text, string $contact): string
