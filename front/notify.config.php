@@ -173,7 +173,7 @@ echo "</select><div class='form-hint'>" . $t('Cada cambio de color vuelve a avis
 echo $number('notify_poll_minutes', __('Consulta cada (minutos)', 'mantenimientos'), $settings['poll_minutes'], 15, 1440, __('Se aplica al descargar de nuevo el instalador.', 'mantenimientos'));
 echo $number('notify_reshow_hours', __('Repetir si no responde (horas)', 'mantenimientos'), $settings['reshow_hours'], 1, 168, __('Al iniciar sesión siempre se muestran los pendientes.', 'mantenimientos'));
 echo $number('notify_snooze_hours', __('"Recordar más tarde" (horas)', 'mantenimientos'), $settings['snooze_hours'], 1, 168, __('Tiempo que se oculta el aviso.', 'mantenimientos'));
-echo $number('notify_repeat_hours', __('Vencidos: repetir cada (horas)', 'mantenimientos'), $settings['repeat_hours'], 1, 720, __('Aunque el usuario ya haya pulsado "Entendido".', 'mantenimientos'));
+echo $number('notify_repeat_hours', __('Tras "Entendido", volver a avisar en (horas)', 'mantenimientos'), $settings['repeat_hours'], 1, 720, __('El aviso solo deja de salir cuando se registra el mantenimiento.', 'mantenimientos'));
 echo "<div class='col-md-6'><label class='form-label'>" . $t('Nombre que muestra Windows') . "</label>"
     . "<input type='text' class='form-control' name='notify_display_name' maxlength='60' value='" . Compat::e($display, true) . "'{$disabled}>"
     . "<div class='form-hint'>" . $t('Se aplica al descargar de nuevo el instalador.') . "</div></div>";

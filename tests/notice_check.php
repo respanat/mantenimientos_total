@@ -46,8 +46,12 @@ $check('pospuesto vigente -> no (ni al iniciar sesión)', !Notice::shouldShow(
     ['date_last_shown' => $h(5), 'snooze_until' => $now->modify('+1 hour')->format('Y-m-d H:i:s')], 'overdue', true, $now, $s));
 $check('pospuesto vencido -> sí', Notice::shouldShow(
     ['date_last_shown' => $h(5), 'snooze_until' => $h(1)], 'warning', false, $now, $s));
-$check('entendido (amarillo) -> no vuelve', !Notice::shouldShow(
-    ['date_last_shown' => $h(48), 'ack_action' => 1, 'date_ack' => $h(47)], 'warning', true, $now, $s));
+$check('entendido (amarillo) hace 2 h -> no, ni al iniciar sesión', !Notice::shouldShow(
+    ['date_last_shown' => $h(3), 'ack_action' => 1, 'date_ack' => $h(2)], 'warning', true, $now, $s));
+$check('entendido (amarillo) hace 25 h, mantenimiento sin hacer -> vuelve', Notice::shouldShow(
+    ['date_last_shown' => $h(26), 'ack_action' => 1, 'date_ack' => $h(25)], 'warning', false, $now, $s));
+$check('entendido (programado) hace 25 h -> vuelve', Notice::shouldShow(
+    ['date_last_shown' => $h(26), 'ack_action' => 1, 'date_ack' => $h(25)], 'scheduled', false, $now, $s));
 $check('entendido vencido hace 2 h -> no', !Notice::shouldShow(
     ['date_last_shown' => $h(3), 'ack_action' => 1, 'date_ack' => $h(2)], 'overdue', true, $now, $s));
 $check('entendido vencido hace 25 h -> sí', Notice::shouldShow(

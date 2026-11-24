@@ -228,7 +228,22 @@ abstract class NoticeBase extends CommonDBTM
             }
         }
 
-        // 2. Semáforo del preventivo
+        // 2. Si el técnico ya está haciendo el preventivo, no se insiste al usuario
+        $in_progress = $DB->request([
+            'COUNT' => 'cpt',
+            'FROM'  => Maintenance::getTable(),
+            'WHERE' => [
+                'itemtype' => \Computer::class,
+                'items_id' => $items_id,
+                'maintenance_type' => Maintenance::TYPE_PREVENTIVE,
+                'status'   => Maintenance::STATUS_IN_PROGRESS,
+            ],
+        ])->current();
+        if ((int) ($in_progress['cpt'] ?? 0) > 0) {
+            return $out;
+        }
+
+        // 3. Semáforo del preventivo
         $record = $DB->request([
             'SELECT' => ['plugin_mantenimientos_plans_id', 'next_due_date', 'is_excluded'],
             'FROM'   => Item::getTable(),
@@ -299,7 +314,9 @@ abstract class NoticeBase extends CommonDBTM
      *
      * Reglas:
      *  - "Recordar más tarde" lo oculta hasta snooze_until.
-     *  - "Entendido" lo cierra; solo los vencidos vuelven a salir pasadas repeat_hours.
+     *  - "Entendido" lo silencia repeat_hours (cualquier color): el aviso solo deja
+     *    de salir cuando el técnico registra el mantenimiento (cambia la fecha y el
+     *    semáforo vuelve a verde, o hay un preventivo en ejecución).
      *  - Sin respuesta: se repite cada reshow_hours, y siempre al iniciar sesión.
      *
      * @param array<string, mixed>|null $row registro guardado (null = nunca mostrado)
@@ -323,13 +340,13 @@ abstract class NoticeBase extends CommonDBTM
         $last_seen = $ts($row['date_last_shown'] ?? null);
 
         if ($acked) {
-            if ($level !== self::LEVEL_OVERDUE || $date_ack === null) {
+            if ($date_ack === null) {
                 return false;
             }
             if ($date_ack->modify(sprintf('+%d hours', $settings['repeat_hours'])) > $now) {
                 return false;
             }
-            // Vencido aceptado hace rato: vuelve a salir. Si ya se mostró después
+            // Aceptado hace rato y el mantenimiento sigue pendiente: vuelve a salir. Si ya se mostró después
             // de aceptarlo y sigue sin respuesta, aplica la regla de repetición normal.
             if ($last_seen === null || $last_seen <= $date_ack) {
                 return true;

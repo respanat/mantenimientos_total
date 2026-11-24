@@ -68,7 +68,7 @@ El agente de GLPI corre como servicio (sesión 0) y no puede mostrar nada en el 
    `powershell.exe -NoProfile -ExecutionPolicy Bypass -File Instalar-AvisosMantenimiento.ps1`
 3. Cada equipo consulta `front/notify.php` al iniciar sesión y cada N minutos, y muestra una notificación de Windows 10/11 con **Entendido** y **Recordar más tarde**. La respuesta queda en el registro de la misma pantalla.
 
-Reglas: cada cambio de color (🟡 → 🟠 → 🔴) avisa de nuevo; sin respuesta se repite cada N horas y al iniciar sesión; los vencidos se quedan en pantalla y vuelven a salir cada N horas aunque se hayan aceptado. Un mantenimiento programado con fecha avisa en lugar del semáforo.
+Reglas: la prioridad la da el técnico. El aviso solo deja de salir cuando se registra el mantenimiento (la fecha avanza y el semáforo vuelve a verde) o mientras hay un preventivo en ejecución. El usuario solo puede silenciarlo: **Entendido** lo oculta N horas (24 por defecto) y **Recordar más tarde** unas pocas (4). Sin respuesta se repite cada N horas y al iniciar sesión; cada cambio de color (🟡 → 🟠 → 🔴) avisa de nuevo y los vencidos se quedan en pantalla hasta que el usuario responda. Un mantenimiento programado con fecha avisa en lugar del semáforo.
 
 El equipo se identifica por número de serie (o por nombre si el serial es genérico). `front/notify.php` no usa sesión de GLPI: lo protege el token (en GLPI 11+ se declara en el firewall como público y sin estado). El token va en `%ProgramData%\MantenimientosAvisos\config.json`, legible por los usuarios del equipo; con él solo se pueden consultar y responder avisos. Si se filtra, se regenera y se vuelve a desplegar.
 

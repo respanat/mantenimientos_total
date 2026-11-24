@@ -262,7 +262,7 @@ function plugin_mantenimientos_default_config(): array
         'notify_scheduled'        => '1',       // Avisar mantenimientos programados con fecha
         'notify_reshow_hours'     => '4',       // Repetir un aviso sin respuesta cada N horas (y al iniciar sesión)
         'notify_snooze_hours'     => '4',       // "Recordar más tarde" lo oculta N horas
-        'notify_repeat_hours'     => '24',      // Vencidos: se repiten cada N horas aunque ya se hayan visto
+        'notify_repeat_hours'     => '24',      // Tras "Entendido" se vuelve a avisar en N horas, hasta que se registre el mantenimiento
         'notify_poll_minutes'     => '60',      // Cada cuánto consulta el equipo
         'notify_contact'          => '',        // Texto final, ej. "Soporte TI: ext. 123"
         'notify_display_name'     => 'Mantenimiento de equipos', // Origen que muestra Windows
