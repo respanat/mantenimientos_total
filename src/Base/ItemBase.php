@@ -178,7 +178,7 @@ abstract class ItemBase extends CommonDBTM
         /** @var \DBmysql $DB */
         global $DB;
 
-        $stats  = ['assigned' => 0, 'updated' => 0, 'unassigned' => 0, 'total' => 0];
+        $stats  = ['assigned' => 0, 'updated' => 0, 'unassigned' => 0, 'total' => 0, 'out_of_service' => 0];
         $dbu    = new DbUtils();
         $now    = date('Y-m-d H:i:s');
         $table  = Item::getTable();
@@ -219,12 +219,14 @@ abstract class ItemBase extends CommonDBTM
             $assets = $DB->request([
                 'SELECT' => ['id', 'entities_id', $type_field, 'date_creation'],
                 'FROM'   => $asset_table,
-                'WHERE'  => ['is_deleted' => 0, 'is_template' => 0],
+                'WHERE'  => ['is_deleted' => 0, 'is_template' => 0] + self::inServiceCriteria($itemtype),
             ]);
 
+            $seen = [];
             foreach ($assets as $asset) {
                 $stats['total']++;
                 $id       = (int) $asset['id'];
+                $seen[$id] = true;
                 $row      = $existing[$id] ?? null;
                 $types_id = (int) $asset[$type_field];
                 $entity   = (int) $asset['entities_id'];
@@ -292,9 +294,114 @@ abstract class ItemBase extends CommonDBTM
                     $stats['updated']++;
                 }
             }
+
+            // Equipos que salieron de servicio (estado excluido o sin inventario):
+            // pierden el plan; así no cuentan en el semáforo ni reciben avisos.
+            foreach ($existing as $items_id => $row) {
+                if (isset($seen[$items_id])) {
+                    continue;
+                }
+                $stats['out_of_service']++;
+                if ((int) $row['plugin_mantenimientos_plans_id'] > 0 || !empty($row['next_due_date'])) {
+                    $DB->update($table, [
+                        'plugin_mantenimientos_plans_id' => 0,
+                        'next_due_date'                  => null,
+                        'date_mod'                       => $now,
+                    ], ['id' => $row['id']]);
+                    $stats['unassigned']++;
+                }
+            }
         }
 
         return $stats;
+    }
+
+    // ---------------------------------------------------------------------
+    // Equipos en servicio (filtro global de mantenimientos)
+    // ---------------------------------------------------------------------
+
+    /**
+     * Estados de GLPI (Activos > Estado) que dejan al equipo fuera de servicio:
+     * no recibe plan, no cuenta en el semáforo ni en las métricas y no recibe avisos.
+     *
+     * @return int[]
+     */
+    public static function getExcludedStates(): array
+    {
+        return Plan::decodeTypesIds(Config::getValue('excluded_states', '[]'));
+    }
+
+    /**
+     * Días sin inventario para considerar fuera de servicio un computador (0 = no aplica).
+     * Solo computadores: los teléfonos y tablets casi nunca se inventarían por agente.
+     */
+    public static function getStaleDays(): int
+    {
+        return max(0, (int) Config::getValue('stale_inventory_days', 0));
+    }
+
+    /**
+     * Criterios SQL (DBmysqlIterator) de "equipo en servicio" para un tipo de equipo.
+     *
+     * @return array<string, mixed>
+     */
+    public static function inServiceCriteria(string $itemtype, string $alias = ''): array
+    {
+        $p    = $alias !== '' ? $alias . '.' : '';
+        $and  = [];
+        $excl = self::getExcludedStates();
+        if ($excl !== []) {
+            $and[] = ['NOT' => [$p . 'states_id' => $excl]];
+        }
+        $days = self::getStaleDays();
+        if ($days > 0 && $itemtype === \Computer::class) {
+            $limit = date('Y-m-d H:i:s', strtotime(sprintf('-%d days', $days)));
+            $and[] = ['OR' => [
+                [$p . 'last_inventory_update' => null],
+                [$p . 'last_inventory_update' => ['>=', $limit]],
+            ]];
+        }
+        return $and === [] ? [] : ['AND' => $and];
+    }
+
+    /**
+     * ¿El equipo está en servicio? Devuelve null si sí, o el motivo si no.
+     */
+    public static function outOfServiceReason(\CommonDBTM $asset): ?string
+    {
+        $state = (int) ($asset->fields['states_id'] ?? 0);
+        if ($state > 0 && in_array($state, self::getExcludedStates(), true)) {
+            return sprintf(
+                __('Estado "%s" configurado como fuera de servicio', 'mantenimientos'),
+                html_entity_decode((string) \Dropdown::getDropdownName('glpi_states', $state), ENT_QUOTES, 'UTF-8')
+            );
+        }
+        $days = self::getStaleDays();
+        $last = (string) ($asset->fields['last_inventory_update'] ?? '');
+        if ($days > 0 && $asset instanceof \Computer && $last !== '' && strtotime($last) < strtotime(sprintf('-%d days', $days))) {
+            return sprintf(__('Sin inventario desde %s (más de %d días)', 'mantenimientos'), Html::convDate(substr($last, 0, 10)), $days);
+        }
+        return null;
+    }
+
+    /**
+     * Cuántos equipos quedan fuera de servicio por la configuración actual.
+     */
+    public static function countOutOfService(bool $all_entities = false): int
+    {
+        /** @var \DBmysql $DB */
+        global $DB;
+        $dbu = new DbUtils();
+        $out = 0;
+        foreach (array_keys(Plan::SUPPORTED_ITEMTYPES) as $itemtype) {
+            $table = $itemtype::getTable();
+            $base  = ['is_deleted' => 0, 'is_template' => 0]
+                + ($all_entities ? [] : $dbu->getEntitiesRestrictCriteria($table, '', '', true));
+            $all = (int) $DB->request(['COUNT' => 'cpt', 'FROM' => $table, 'WHERE' => $base])->current()['cpt'];
+            $in  = (int) $DB->request(['COUNT' => 'cpt', 'FROM' => $table, 'WHERE' => $base + self::inServiceCriteria($itemtype)])->current()['cpt'];
+            $out += max(0, $all - $in);
+        }
+        return $out;
     }
 
     /**
@@ -314,7 +421,7 @@ abstract class ItemBase extends CommonDBTM
      * Equipos con su plan, usuario asignado y semáforo, dentro de las entidades
      * activas del usuario. Ordenados del más atrasado al más holgado.
      *
-     * @param array{itemtype?: string, light?: string, plans_id?: int} $filters
+     * @param array{itemtype?: string, light?: string, plans_id?: int, states_id?: int} $filters
      * @param bool $all_entities true = sin restringir por las entidades de la sesión (tarea programada)
      * @return list<array<string, mixed>>
      */
@@ -337,16 +444,21 @@ abstract class ItemBase extends CommonDBTM
                 'i.itemtype'    => $itemtype,
                 'a.is_deleted'  => 0,
                 'a.is_template' => 0,
-            ] + ($all_entities ? [] : $dbu->getEntitiesRestrictCriteria('a', '', '', true));
+            ] + ($all_entities ? [] : $dbu->getEntitiesRestrictCriteria('a', '', '', true))
+              + self::inServiceCriteria($itemtype, 'a');
             if (!empty($filters['plans_id'])) {
                 $where['i.plugin_mantenimientos_plans_id'] = (int) $filters['plans_id'];
+            }
+            if (!empty($filters['states_id'])) {
+                $where['a.states_id'] = (int) $filters['states_id'];
             }
 
             $iterator = $DB->request([
                 'SELECT' => [
                     'i.id', 'i.items_id', 'i.itemtype', 'i.plugin_mantenimientos_plans_id',
                     'i.last_preventive_date', 'i.next_due_date', 'i.is_excluded',
-                    'a.name AS asset_name', 'a.users_id',
+                    'a.name AS asset_name', 'a.users_id', 'a.states_id',
+                    's.completename AS state_name',
                     'p.name AS plan_name',
                     't.name AS type_name',
                     'u.name AS user_login', 'u.realname', 'u.firstname',
@@ -359,6 +471,7 @@ abstract class ItemBase extends CommonDBTM
                     Plan::getTable() . ' AS p'           => ['ON' => ['i' => 'plugin_mantenimientos_plans_id', 'p' => 'id']],
                     $type_class::getTable() . ' AS t'    => ['ON' => ['a' => $type_field, 't' => 'id']],
                     'glpi_users AS u'                    => ['ON' => ['a' => 'users_id', 'u' => 'id']],
+                    'glpi_states AS s'                   => ['ON' => ['a' => 'states_id', 's' => 'id']],
                 ],
                 'WHERE' => $where,
             ]);
@@ -406,7 +519,8 @@ abstract class ItemBase extends CommonDBTM
                 'COUNT' => 'cpt',
                 'FROM'  => $itemtype::getTable(),
                 'WHERE' => ['is_deleted' => 0, 'is_template' => 0]
-                    + ($all_entities ? [] : $dbu->getEntitiesRestrictCriteria($itemtype::getTable(), '', '', true)),
+                    + ($all_entities ? [] : $dbu->getEntitiesRestrictCriteria($itemtype::getTable(), '', '', true))
+                    + self::inServiceCriteria($itemtype),
             ])->current()['cpt'];
         }
         $counts[self::LIGHT_NOPLAN] += max(0, $total - $with_record);
@@ -542,6 +656,14 @@ abstract class ItemBase extends CommonDBTM
         $next  = $found ? ($record->fields['next_due_date'] ?? null) : null;
         $light = $found && (int) $record->fields['is_excluded'] === 1 ? self::LIGHT_NOPLAN : self::computeLight($next);
         $days  = self::daysUntil($next);
+
+        $out_reason = self::outOfServiceReason($asset);
+        if ($out_reason !== null) {
+            echo "<div class='alert alert-secondary mt-2'><i class='ti ti-plug-connected-x me-1'></i><b>"
+                . Compat::e(__('Fuera de servicio', 'mantenimientos')) . ":</b> " . Compat::e($out_reason) . ". "
+                . Compat::e(__('No recibe plan, no cuenta en el semáforo ni en las métricas y no recibe avisos.', 'mantenimientos'))
+                . "</div>";
+        }
 
         echo "<div class='card mt-2'><div class='card-body'>";
         echo "<div class='d-flex align-items-center mb-3'>" . self::lightBadge($light);

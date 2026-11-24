@@ -252,6 +252,9 @@ function plugin_mantenimientos_default_config(): array
         'replacement_cost_pct'    => '50', // Costo acumulado vs valor de compra
         'recurrence_count'        => '2',  // Correctivos para marcar reincidente...
         'recurrence_months'       => '12', // ...dentro de estos meses
+        // Equipos en servicio: los demás no reciben plan, no cuentan y no reciben avisos
+        'excluded_states'         => '[]', // Estados de GLPI fuera de servicio (JSON de ids)
+        'stale_inventory_days'    => '0',  // Computadores sin inventario en N días (0 = no aplica)
         // Avisos en Windows (fase 3)
         'notify_enabled'          => '0',       // Apagado hasta que se configure
         'notify_token'            => '',        // Se genera al instalar
