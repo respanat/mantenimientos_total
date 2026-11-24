@@ -154,7 +154,8 @@ if (Session::haveRight(Plan::$rightname, UPDATE)) {
 }
 
 // Tabla
-echo "<div class='card'><div class='table-responsive'><table class='table table-hover card-table'>";
+echo Ui::tableTools();
+echo "<div class='card'><div class='table-responsive'><table class='table table-hover card-table mant-table'>";
 echo "<thead><tr>";
 foreach (
     [__('Estado', 'mantenimientos'), __('Equipo', 'mantenimientos'), __('Tipo', 'mantenimientos'),
@@ -177,7 +178,7 @@ foreach ($rows as $row) {
     $days     = $row['days'];
     $days_txt = $days === null ? '—' : ($days < 0 ? sprintf(__('%d de atraso', 'mantenimientos'), -$days) : (string) $days);
     echo "<tr>";
-    echo "<td>" . Item::lightBadge($row['light']) . "</td>";
+    echo "<td data-sort='" . Item::lightRank($row['light']) . "'>" . Item::lightBadge($row['light']) . "</td>";
     echo "<td><a href='" . Compat::e($itemtype::getFormURLWithID((int) $row['items_id'])) . "'>"
         . Compat::e($row['asset_name'] ?: ('#' . $row['items_id']), true) . "</a></td>";
     echo "<td>" . Compat::e($itemtype::getTypeName(1)) . ($row['type_name'] ? ' / ' . Compat::e($row['type_name'], true) : '') . "</td>";
@@ -185,9 +186,9 @@ foreach ($rows as $row) {
     echo "<td>" . Compat::e($row['user'], true) . "</td>";
     echo "<td>" . ($row['plan_name'] ? "<a href='" . Compat::e(Plan::getFormURLWithID((int) $row['plugin_mantenimientos_plans_id'])) . "'>"
         . Compat::e($row['plan_name'], true) . "</a>" : '—') . "</td>";
-    echo "<td>" . Compat::e($row['last_preventive_date'] ? Html::convDate($row['last_preventive_date']) : __('Sin registro', 'mantenimientos')) . "</td>";
-    echo "<td>" . Compat::e($row['next_due_date'] ? Html::convDate($row['next_due_date']) : '—') . "</td>";
-    echo "<td>" . Compat::e($days_txt) . "</td>";
+    echo "<td data-sort='" . Compat::e((string) ($row['last_preventive_date'] ?? '')) . "'>" . Compat::e($row['last_preventive_date'] ? Html::convDate($row['last_preventive_date']) : __('Sin registro', 'mantenimientos')) . "</td>";
+    echo "<td data-sort='" . Compat::e((string) ($row['next_due_date'] ?? '')) . "'>" . Compat::e($row['next_due_date'] ? Html::convDate($row['next_due_date']) : '—') . "</td>";
+    echo "<td data-sort='" . ($days === null ? '' : (int) $days) . "'>" . Compat::e($days_txt) . "</td>";
     echo "<td class='text-end'>";
     if ($can_register && $row['light'] !== Item::LIGHT_NOPLAN) {
         $open = Maintenance::findOpenPreventive($itemtype, (int) $row['items_id']);

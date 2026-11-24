@@ -344,7 +344,8 @@ echo "<h4 class='mt-2 mb-2'>" . Compat::e(sprintf(__('Equipos con aviso hoy (%d)
 if ($due === []) {
     echo "<div class='text-muted'>" . $t('Ningún computador está en el rango de aviso configurado.') . "</div>";
 } else {
-    echo "<div class='table-responsive'><table class='table table-sm table-hover'><thead><tr>";
+    echo Ui::tableTools();
+    echo "<div class='table-responsive'><table class='table table-sm table-hover mant-table'><thead><tr>";
     foreach (['Estado', 'Equipo', 'Serial', 'Usuario', 'Próximo', 'Días', 'Último aviso', ''] as $th) {
         echo "<th>" . $t($th) . "</th>";
     }
@@ -355,13 +356,13 @@ if ($due === []) {
         $url  = $self_url . '?preview_id=' . $id;
         $sel  = $computer !== null && (int) $computer['id'] === $id ? " class='table-active'" : '';
         echo "<tr{$sel}>";
-        echo "<td>" . Item::lightBadge((string) $r['light']) . "</td>";
+        echo "<td data-sort='" . Item::lightRank((string) $r['light']) . "'>" . Item::lightBadge((string) $r['light']) . "</td>";
         echo "<td><a href='" . Compat::e(Computer::getFormURLWithID($id)) . "'>" . Compat::e((string) ($r['asset_name'] ?: '#' . $id), true) . "</a></td>";
         echo "<td>" . Compat::e($info[$id]['serial'] ?? '', true) . "</td>";
         echo "<td>" . Notice::userCell($info[$id]['contact'] ?? '', (string) $r['user']) . "</td>";
-        echo "<td>" . Compat::e($r['next_due_date'] ? Html::convDate($r['next_due_date']) : '—') . "</td>";
-        echo "<td>" . Compat::e($days === null ? '—' : ($days < 0 ? sprintf(__('%d de atraso', 'mantenimientos'), -$days) : (string) $days)) . "</td>";
-        echo "<td>" . (isset($last[$id]) ? Notice::responseBadge($last[$id]) : "<span class='text-muted'>" . $t('Nunca') . "</span>") . "</td>";
+        echo "<td data-sort='" . Compat::e((string) ($r['next_due_date'] ?? '')) . "'>" . Compat::e($r['next_due_date'] ? Html::convDate($r['next_due_date']) : '—') . "</td>";
+        echo "<td data-sort='" . ($days === null ? '' : (int) $days) . "'>" . Compat::e($days === null ? '—' : ($days < 0 ? sprintf(__('%d de atraso', 'mantenimientos'), -$days) : (string) $days)) . "</td>";
+        echo "<td data-sort='" . Compat::e(isset($last[$id]) ? (string) ($last[$id]['date_last_shown'] ?? '') : '') . "'>" . (isset($last[$id]) ? Notice::responseBadge($last[$id]) : "<span class='text-muted'>" . $t('Nunca') . "</span>") . "</td>";
         echo "<td class='text-end'><a class='btn btn-sm btn-primary' href='" . Compat::e($url) . "'><i class='ti ti-eye me-1'></i>" . $t('Ver aviso') . "</a></td>";
         echo "</tr>";
     }
@@ -385,7 +386,8 @@ if ($answer !== '') {
     echo "<a class='btn btn-sm btn-outline-secondary ms-auto' href='" . Compat::e($tile_url($answer)) . "'><i class='ti ti-x me-1'></i>" . $t('Quitar filtro') . "</a>";
 }
 echo "</div>";
-echo "<div class='table-responsive'><table class='table table-hover card-table'><thead><tr>";
+echo Ui::tableTools();
+echo "<div class='table-responsive'><table class='table table-hover card-table mant-table'><thead><tr>";
 foreach (['Equipo', 'Usuario', 'Usuario de Windows', 'Aviso', 'Veces', 'Primera vez', 'Última vez', 'Respuesta'] as $th) {
     echo "<th>" . $t($th) . "</th>";
 }
@@ -406,8 +408,8 @@ foreach ($rows as $row) {
     echo "<td>" . Notice::levelBadge((string) $row['level']) . " <span title='" . Compat::e((string) $row['message'], true) . "'>"
         . Compat::e((string) $row['title'], true) . "</span></td>";
     echo "<td>" . (int) $row['times_shown'] . "</td>";
-    echo "<td>" . Compat::e(Html::convDateTime($row['date_first_shown'])) . "</td>";
-    echo "<td>" . Compat::e(Html::convDateTime($row['date_last_shown'])) . "</td>";
+    echo "<td data-sort='" . Compat::e((string) $row['date_first_shown']) . "'>" . Compat::e(Html::convDateTime($row['date_first_shown'])) . "</td>";
+    echo "<td data-sort='" . Compat::e((string) $row['date_last_shown']) . "'>" . Compat::e(Html::convDateTime($row['date_last_shown'])) . "</td>";
     echo "<td>{$answer}</td>";
     echo "</tr>";
 }

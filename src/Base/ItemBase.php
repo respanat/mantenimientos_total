@@ -97,6 +97,15 @@ abstract class ItemBase extends CommonDBTM
         ];
     }
 
+    /**
+     * Posición del color en el semáforo (0 = más urgente), para ordenar tablas.
+     */
+    public static function lightRank(string $light): int
+    {
+        $pos = array_search($light, array_keys(self::getLights()), true);
+        return $pos === false ? 99 : (int) $pos;
+    }
+
     public static function lightBadge(string $light): string
     {
         $def = self::getLights()[$light] ?? self::getLights()[self::LIGHT_NOPLAN];

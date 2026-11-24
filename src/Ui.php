@@ -46,6 +46,123 @@ final class Ui
 CSS;
     }
 
+    private static bool $table_tools_printed = false;
+
+    /**
+     * Búsqueda y orden por columnas para las tablas con clase "mant-table"
+     * (del lado del navegador, sin recargar). Se imprime una sola vez por página.
+     *
+     * - Cuadro de búsqueda encima de cada tabla: filtra filas por cualquier texto
+     *   (sin distinguir mayúsculas ni tildes) y muestra "N de M".
+     * - Clic en el encabezado ordena; clic de nuevo invierte. Si la celda tiene
+     *   data-sort, se ordena por ese valor (fechas Y-m-d, números, rango del semáforo).
+     * - Encabezados vacíos o con data-nosort no ordenan.
+     */
+    public static function tableTools(): string
+    {
+        if (self::$table_tools_printed) {
+            return '';
+        }
+        self::$table_tools_printed = true;
+        $ph    = json_encode(__('Buscar equipo, serial, usuario…', 'mantenimientos'));
+        $of    = json_encode(__('%1$s de %2$s', 'mantenimientos'));
+        $empty = json_encode(__('Ninguna fila coincide con la búsqueda.', 'mantenimientos'));
+        return <<<HTML
+<style>
+table.mant-table th.mant-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+table.mant-table th.mant-sort:hover { color: var(--tblr-primary, #206bc4); }
+table.mant-table th.mant-sort::after { content: '\\2195'; opacity: .3; margin-left: .3rem; font-size: .8em; }
+table.mant-table th.mant-sort[data-dir='asc']::after  { content: '\\25B2'; opacity: .9; }
+table.mant-table th.mant-sort[data-dir='desc']::after { content: '\\25BC'; opacity: .9; }
+.mant-table-search { max-width: 360px; }
+</style>
+<script>
+(function () {
+    var PH = {$ph}, OF = {$of}, EMPTY = {$empty};
+    function norm(t) {
+        return (t || '').toString().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().trim();
+    }
+    function cellValue(row, idx) {
+        var c = row.cells[idx];
+        if (!c) { return ''; }
+        return c.hasAttribute('data-sort') ? c.getAttribute('data-sort') : c.textContent.trim();
+    }
+    function cmp(a, b) {
+        var na = parseFloat(a), nb = parseFloat(b);
+        var numA = a !== '' && !isNaN(na) && isFinite(a), numB = b !== '' && !isNaN(nb) && isFinite(b);
+        if (numA && numB) { return na - nb; }
+        if (a === '' && b !== '') { return 1; }   // vacíos al final
+        if (b === '' && a !== '') { return -1; }
+        return norm(a).localeCompare(norm(b), 'es', { numeric: true });
+    }
+    function enhance(table) {
+        if (table.dataset.mantReady) { return; }
+        table.dataset.mantReady = '1';
+        var tbody = table.tBodies[0];
+        if (!tbody) { return; }
+        var rows = function () {
+            return Array.prototype.filter.call(tbody.rows, function (r) { return !r.hasAttribute('data-mant-empty') && !(r.cells.length === 1 && r.cells[0].colSpan > 1); });
+        };
+        var total = rows().length;
+        if (total === 0) { return; }
+
+        // Búsqueda
+        var bar = document.createElement('div');
+        bar.className = 'd-flex align-items-center gap-2 p-2';
+        bar.innerHTML = "<div class='input-icon mant-table-search flex-grow-1'><span class='input-icon-addon'><i class='ti ti-search'></i></span>"
+            + "<input type='search' class='form-control form-control-sm'></div><span class='text-muted small mant-table-count'></span>";
+        var input = bar.querySelector('input'), count = bar.querySelector('.mant-table-count');
+        input.placeholder = PH;
+        var holder = table.closest('.table-responsive') || table;
+        holder.parentNode.insertBefore(bar, holder);
+        var colspan = table.tHead && table.tHead.rows[0] ? table.tHead.rows[0].cells.length : 1;
+        var none = document.createElement('tr');
+        none.setAttribute('data-mant-empty', '1');
+        none.style.display = 'none';
+        none.innerHTML = "<td colspan='" + colspan + "' class='text-center text-muted p-3'></td>";
+        none.cells[0].textContent = EMPTY;
+        tbody.appendChild(none);
+        var apply = function () {
+            var q = norm(input.value), shown = 0;
+            rows().forEach(function (r) {
+                if (r._mantText === undefined) { r._mantText = norm(r.textContent); }
+                var ok = q === '' || q.split(/\\s+/).every(function (w) { return r._mantText.indexOf(w) !== -1; });
+                r.style.display = ok ? '' : 'none';
+                if (ok) { shown++; }
+            });
+            none.style.display = shown === 0 ? '' : 'none';
+            count.textContent = q === '' ? '' : OF.replace('%1\$s', shown).replace('%2\$s', total);
+        };
+        input.addEventListener('input', apply);
+
+        // Orden
+        if (!table.tHead) { return; }
+        Array.prototype.forEach.call(table.tHead.rows[0].cells, function (th, idx) {
+            if (th.hasAttribute('data-nosort') || th.textContent.trim() === '') { return; }
+            th.classList.add('mant-sort');
+            th.title = th.title || th.textContent.trim();
+            th.addEventListener('click', function () {
+                var dir = th.getAttribute('data-dir') === 'asc' ? 'desc' : 'asc';
+                Array.prototype.forEach.call(table.tHead.rows[0].cells, function (o) { o.removeAttribute('data-dir'); });
+                th.setAttribute('data-dir', dir);
+                var list = rows();
+                list.sort(function (a, b) {
+                    var va = cellValue(a, idx), vb = cellValue(b, idx);
+                    if ((va === '') !== (vb === '')) { return va === '' ? 1 : -1; } // vacíos siempre al final
+                    var r = cmp(va, vb);
+                    return dir === 'asc' ? r : -r;
+                });
+                list.forEach(function (r) { tbody.insertBefore(r, none); });
+            });
+        });
+    }
+    function init() { document.querySelectorAll('table.mant-table').forEach(enhance); }
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
+})();
+</script>
+HTML;
+    }
+
     /**
      * @param list<array{
      *   value: int|string, label: string, color: string, text?: string,
