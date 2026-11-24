@@ -669,11 +669,46 @@ abstract class NoticeBase extends CommonDBTM
      *
      * @return list<array<string, mixed>>
      */
-    public static function getRecent(int $limit = 100): array
+    public const ANSWER_FILTERS = ['all', 'done', 'snoozed', 'pending'];
+
+    /**
+     * Criterios del filtro de los mosaicos: mismo criterio que getSummary().
+     *
+     * @return array<string, mixed>
+     */
+    public static function answerCriteria(string $answer, int $days = 30): array
+    {
+        if (!in_array($answer, self::ANSWER_FILTERS, true)) {
+            return [];
+        }
+        $since = (new \DateTimeImmutable())->modify(sprintf('-%d days', $days))->format('Y-m-d H:i:s');
+        $now   = date('Y-m-d H:i:s');
+        $where = [
+            'n.date_last_shown' => ['>=', $since],
+            'n.level'           => ['<>', self::LEVEL_TEST],
+        ];
+        switch ($answer) {
+            case 'done':
+                $where['n.ack_action'] = self::ACK_DONE;
+                break;
+            case 'snoozed':
+                $where['n.ack_action']   = ['<>', self::ACK_DONE];
+                $where['n.snooze_until'] = ['>', $now];
+                break;
+            case 'pending':
+                $where['n.ack_action'] = ['<>', self::ACK_DONE];
+                $where[] = ['OR' => [['n.snooze_until' => null], ['n.snooze_until' => ['<=', $now]]]];
+                break;
+        }
+        return $where;
+    }
+
+    public static function getRecent(int $limit = 100, string $answer = ''): array
     {
         /** @var \DBmysql $DB */
         global $DB;
 
+        $where = self::answerCriteria($answer);
         return iterator_to_array($DB->request([
             'SELECT'    => [
                 'n.*', 'c.name AS asset_name', 'c.contact',
@@ -684,6 +719,7 @@ abstract class NoticeBase extends CommonDBTM
                 \Computer::getTable() . ' AS c' => ['ON' => ['n' => 'items_id', 'c' => 'id']],
                 'glpi_users AS u'                => ['ON' => ['c' => 'users_id', 'u' => 'id']],
             ],
+            'WHERE'     => $where === [] ? [] : $where,
             'ORDER'     => ['n.date_mod DESC'],
             'LIMIT'     => $limit,
         ]), false);

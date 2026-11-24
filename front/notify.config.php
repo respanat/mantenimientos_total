@@ -116,11 +116,27 @@ echo "<div class='container-fluid'>";
 $sum    = Notice::getSummary(30);
 $lights = Item::getLights();
 echo "<h4 class='mb-2'>" . $t('Avisos de los últimos 30 días') . "</h4>";
+// Mosaicos clicables: filtran el registro de avisos (clic de nuevo = quitar filtro)
+$answer   = in_array($_GET['answer'] ?? '', Notice::ANSWER_FILTERS, true) ? (string) $_GET['answer'] : '';
+$tile_url = static function (string $key) use ($self_url, $answer): string {
+    $params = array_filter([
+        'answer'     => $answer === $key ? null : $key,
+        'preview_id' => (int) ($_GET['preview_id'] ?? 0) ?: null,
+    ]);
+    return $self_url . ($params === [] ? '' : '?' . http_build_query($params)) . '#mant-registro';
+};
+$tile = static function (string $key, int $value, string $label, string $color, string $icon, string $hint, string $text = '') use ($tile_url, $answer): array {
+    return [
+        'value' => $value, 'label' => $label, 'color' => $color, 'icon' => $icon,
+        'url' => $tile_url($key), 'hint' => $hint,
+        'active' => $answer === $key, 'dimmed' => $answer !== '' && $answer !== $key,
+    ] + ($text !== '' ? ['text' => $text] : []);
+};
 echo Ui::tiles([
-    ['value' => $sum['computers'], 'label' => __('Equipos avisados', 'mantenimientos'), 'color' => '#6495d6', 'text' => '#fff', 'icon' => 'ti ti-device-desktop'],
-    ['value' => $sum['done'], 'label' => __('Entendidos', 'mantenimientos'), 'color' => $lights['ok']['tile'], 'icon' => 'ti ti-circle-check'],
-    ['value' => $sum['snoozed'], 'label' => __('Pospuestos', 'mantenimientos'), 'color' => $lights['warning']['tile'], 'icon' => 'ti ti-clock-pause'],
-    ['value' => $sum['pending'], 'label' => __('Sin respuesta', 'mantenimientos'), 'color' => $lights['critical']['tile'], 'icon' => 'ti ti-bell-question'],
+    $tile('all', $sum['computers'], __('Equipos avisados', 'mantenimientos'), '#6495d6', 'ti ti-device-desktop', __('Ver todos los avisos de los últimos 30 días', 'mantenimientos'), '#fff'),
+    $tile('done', $sum['done'], __('Entendidos', 'mantenimientos'), $lights['ok']['tile'], 'ti ti-circle-check', __('Ver los avisos que el usuario marcó como entendidos', 'mantenimientos')),
+    $tile('snoozed', $sum['snoozed'], __('Pospuestos', 'mantenimientos'), $lights['warning']['tile'], 'ti ti-clock-pause', __('Ver los avisos pospuestos que aún no vuelven a mostrarse', 'mantenimientos')),
+    $tile('pending', $sum['pending'], __('Sin respuesta', 'mantenimientos'), $lights['critical']['tile'], 'ti ti-bell-question', __('Ver los avisos mostrados que el usuario no ha respondido', 'mantenimientos')),
 ]);
 
 echo "<div class='row g-3'>";
@@ -354,16 +370,29 @@ if ($due === []) {
 echo "</div></div></div>";
 
 // --- Registro --------------------------------------------------------------
-$rows = Notice::getRecent(100);
-echo "<div class='col-12'><div class='card'>";
-echo "<div class='card-header'><h3 class='card-title mb-0'><i class='ti ti-list-check me-2'></i>" . $t('Registro de avisos') . "</h3></div>";
+$rows = Notice::getRecent($answer === '' ? 100 : 1000, $answer);
+$answer_labels = [
+    'all'     => __('todos los avisos de los últimos 30 días', 'mantenimientos'),
+    'done'    => __('entendidos (últimos 30 días)', 'mantenimientos'),
+    'snoozed' => __('pospuestos (últimos 30 días)', 'mantenimientos'),
+    'pending' => __('sin respuesta (últimos 30 días)', 'mantenimientos'),
+];
+echo "<div class='col-12' id='mant-registro'><div class='card'>";
+echo "<div class='card-header d-flex align-items-center'><h3 class='card-title mb-0'><i class='ti ti-list-check me-2'></i>" . $t('Registro de avisos') . "</h3>";
+if ($answer !== '') {
+    echo "<span class='badge bg-blue-lt ms-2'><i class='ti ti-filter me-1'></i>"
+        . Compat::e(sprintf(__('%1$s: %2$d', 'mantenimientos'), $answer_labels[$answer], count($rows))) . "</span>";
+    echo "<a class='btn btn-sm btn-outline-secondary ms-auto' href='" . Compat::e($tile_url($answer)) . "'><i class='ti ti-x me-1'></i>" . $t('Quitar filtro') . "</a>";
+}
+echo "</div>";
 echo "<div class='table-responsive'><table class='table table-hover card-table'><thead><tr>";
 foreach (['Equipo', 'Usuario', 'Usuario de Windows', 'Aviso', 'Veces', 'Primera vez', 'Última vez', 'Respuesta'] as $th) {
     echo "<th>" . $t($th) . "</th>";
 }
 echo "</tr></thead><tbody>";
 if ($rows === []) {
-    echo "<tr><td colspan='8' class='text-center text-muted p-4'>" . $t('Todavía no se ha mostrado ningún aviso.') . "</td></tr>";
+    echo "<tr><td colspan='8' class='text-center text-muted p-4'>"
+        . ($answer === '' ? $t('Todavía no se ha mostrado ningún aviso.') : $t('Ningún aviso coincide con el filtro.')) . "</td></tr>";
 }
 foreach ($rows as $row) {
     $user   = trim(($row['firstname'] ?? '') . ' ' . ($row['realname'] ?? '')) ?: (string) ($row['user_login'] ?? '');
