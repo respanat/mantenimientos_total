@@ -44,6 +44,12 @@ if (isset($_POST['start_preventive'])) {
         Session::addMessageAfterRedirect(__('Avance guardado.', 'mantenimientos'));
     }
     Html::redirect(Maintenance::getFormURLWithID((int) $_POST['id']));
+} elseif (isset($_POST['annul'])) {
+    $maintenance->check((int) $_POST['id'], UPDATE);
+    if ($maintenance->annul((string) ($_POST['annul_reason'] ?? ''))) {
+        Session::addMessageAfterRedirect(__('Preventivo anulado. El equipo volvió a su fecha de mantenimiento anterior.', 'mantenimientos'));
+    }
+    Html::redirect(Maintenance::getFormURLWithID((int) $_POST['id']));
 } elseif (isset($_POST['cancel'])) {
     $maintenance->check((int) $_POST['id'], UPDATE);
     if ($maintenance->cancel((string) ($_POST['cancel_reason'] ?? ''))) {

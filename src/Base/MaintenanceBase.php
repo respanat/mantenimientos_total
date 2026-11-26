@@ -371,6 +371,70 @@ abstract class MaintenanceBase extends CommonDBTM
         return true;
     }
 
+    /**
+     * ¿Puede el usuario anular un preventivo ya completado? Solo quien administra
+     * los planes (supervisión), no el técnico que lo registró.
+     */
+    public function canAnnul(): bool
+    {
+        return (int) $this->fields['maintenance_type'] === self::TYPE_PREVENTIVE
+            && (int) $this->fields['status'] === self::STATUS_COMPLETED
+            && Session::haveRight(Plan::$rightname, UPDATE)
+            && $this->can($this->getID(), UPDATE);
+    }
+
+    /**
+     * Anula un preventivo completado por error: queda Cancelado con el motivo, y el
+     * último preventivo del equipo vuelve a ser el anterior completado (o ninguno),
+     * de modo que la próxima fecha, el semáforo, las tarjetas y los avisos se recalculan.
+     */
+    public function annul(string $reason): bool
+    {
+        $reason = trim($reason);
+        if ($reason === '') {
+            Session::addMessageAfterRedirect(__('Indique el motivo de la anulación.', 'mantenimientos'), false, ERROR);
+            return false;
+        }
+        if (!$this->canAnnul()) {
+            return false;
+        }
+        $now  = $_SESSION['glpi_currenttime'] ?? date('Y-m-d H:i:s');
+        $text = sprintf(__('Anulado después de completado: %s', 'mantenimientos'), $reason);
+        $this->update([
+            'id'            => $this->getID(),
+            'status'        => self::STATUS_CANCELLED,
+            'cancel_reason' => $text,
+        ]);
+        StatusLog::record((int) $this->getID(), self::STATUS_COMPLETED, self::STATUS_CANCELLED, $text);
+
+        /** @var \DBmysql $DB */
+        global $DB;
+        $prev = $DB->request([
+            'SELECT' => ['date_end'],
+            'FROM'   => Maintenance::getTable(),
+            'WHERE'  => [
+                'itemtype'         => $this->fields['itemtype'],
+                'items_id'         => (int) $this->fields['items_id'],
+                'maintenance_type' => self::TYPE_PREVENTIVE,
+                'status'           => self::STATUS_COMPLETED,
+                'id'               => ['<>', (int) $this->getID()],
+                'NOT'              => ['date_end' => null],
+            ],
+            'ORDER'  => 'date_end DESC',
+            'LIMIT'  => 1,
+        ])->current();
+        $DB->update(Item::getTable(), [
+            'last_preventive_date' => $prev ? substr((string) $prev['date_end'], 0, 10) : null,
+            'date_mod'             => $now,
+        ], [
+            'itemtype' => $this->fields['itemtype'],
+            'items_id' => (int) $this->fields['items_id'],
+        ]);
+        Item::syncAll();
+        Item::recordSnapshot();
+        return true;
+    }
+
     // =====================================================================
     // Formulario: registro tipo formato en papel
     // =====================================================================
@@ -442,6 +506,21 @@ abstract class MaintenanceBase extends CommonDBTM
                 . Compat::e((string) $this->fields['cancel_reason'], true) . "</div>";
         }
         echo "</div></div>";
+
+        // Anular un preventivo completado por error (supervisión)
+        if ($this->canAnnul()) {
+            echo "<form method='post' action='" . Compat::e(Maintenance::getFormURL()) . "' class='card card-body mb-3 border-danger'>";
+            echo "<input type='hidden' name='id' value='{$id}'>";
+            echo "<div class='row g-2 align-items-end'><div class='col-md-9'>";
+            echo "<label class='form-label'>" . Compat::e(__('Anular este preventivo (se completó por error)', 'mantenimientos')) . "</label>";
+            echo "<input type='text' name='annul_reason' class='form-control' required maxlength='450' placeholder='"
+                . Compat::e(__('Motivo (ej.: se marcó completado sin haber hecho el servicio)', 'mantenimientos')) . "'>";
+            echo "<div class='form-hint'>" . Compat::e(__('El equipo vuelve a tomar como último preventivo el anterior completado (o ninguno); se recalculan la próxima fecha, el semáforo, las tarjetas y los avisos.', 'mantenimientos')) . "</div></div>";
+            echo "<div class='col-md-3'><button type='submit' name='annul' value='1' class='btn btn-outline-danger w-100'"
+                . " onclick=\"return confirm('" . Compat::e(__('¿Anular este preventivo completado? No se puede deshacer.', 'mantenimientos')) . "');\">"
+                . "<i class='ti ti-arrow-back-up me-1'></i>" . Compat::e(__('Anular preventivo', 'mantenimientos')) . "</button></div></div>";
+            Html::closeForm();
+        }
 
         // ----- Checklist
         $checks = (new Check())->find(['plugin_mantenimientos_maintenances_id' => $id], ['id']);
